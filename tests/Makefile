@@ -9,7 +9,7 @@ all: $(NAME)
 $(NAME):
 	make -C minilibx-linux 2>/dev/null 1>/dev/null
 	make -C libft
-	$(CC) $(SRCS) $(INCLUDES) $(MLX)  libft/libft.a   -o $(NAME)
+	$(CC) $(SRCS) $(INCLUDES) $(MLX) libft/libft.a -o $(NAME)
 
 clean:
 	make clean -C minilibx-linux 2>/dev/null 1>/dev/null

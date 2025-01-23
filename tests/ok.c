@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   prova.c                                            :+:      :+:    :+:   */
+/*   ok.c                                               :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: gpicchio <gpicchio@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/01/17 10:36:16 by gpicchio          #+#    #+#             */
-/*   Updated: 2025/01/22 16:21:14 by gpicchio         ###   ########.fr       */
+/*   Updated: 2025/01/23 11:31:08 by gpicchio         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -36,23 +36,38 @@ typedef struct	s_data {
 	void	*win;
 }				t_data;
 
-typedef struct s_object
-{
-    t_data img;
-    int color;
-    char **map;
-	int map_size[2];
+typedef struct s_mouse_data {
+	int mouse_pressed;
+	int	right_mouse_pressed;
+	int	initial_mouse_pos[2];
+	int	axis_selected;
+	double mouse_speed;
+}			t_mouse_data;
+
+typedef struct s_map_data {
+	char **map;
+	int size_x;
+	int size_y;
     int **new_map;
-    int angle_x;
+}			t_map_data;
+
+typedef struct s_transform {
+	int angle_x;
     int angle_y;
 	int angle_z;
 	int	x_pos;
 	int	y_pos;
-	int mouse_pressed;
-	int	right_mouse_pressed;
-	int	axis_selected;
 	int last_x;
 	int last_y;
+}			t_transform;
+
+typedef struct s_object
+{
+    t_data img;
+    int color;
+    t_map_data map_data;
+    t_transform transform;
+	t_mouse_data mouse_data;
 	int	size;
 }		t_object;
 
@@ -209,35 +224,40 @@ int **transform_map(char **map)
     return new_map;
 }
 
-void rotate_3d(double x, double y, double z, double *x_out, double *y_out, double *z_out, double angle_x, double angle_y, double angle_z)
+void rotate_3d(int x, int y, int z, double *rx, double *ry, double *rz, double angle_x, double angle_y, double angle_z)
 {
-	double ax = angle_x * (M_PI / 180.0);
-	double ay = angle_y * (M_PI / 180.0);
-	double az = angle_z * (M_PI / 180.0);
-	double rx = x * cos(ay) + z * sin(ay);
-	double ry = y * cos(ax) - z * sin(ax);
-	double rz = y * sin(ax) + z * cos(ax);
-
-	y = ry;
-	z = rz;
-	rz = -x * sin(ay) + z * cos(ay);
-	x = rx;
-	z = rz;
-	rx = x * cos(az) - y * sin(az);
-	ry = x * sin(az) + y * cos(az);
-	*x_out = rx;
-	*y_out = ry;
-	*z_out = rz;
+    double rad_x = angle_x * M_PI / 180.0;
+    double rad_y = angle_y * M_PI / 180.0;
+    double rad_z = angle_z * M_PI / 180.0;
+    double cos_x = cos(rad_x);
+    double sin_x = sin(rad_x);
+    double y1 = y * cos_x - z * sin_x;
+    double z1 = y * sin_x + z * cos_x;
+    double cos_y = cos(rad_y);
+    double sin_y = sin(rad_y);
+    double x2 = x * cos_y + z1 * sin_y;
+    double z2 = -x * sin_y + z1 * cos_y;
+    double cos_z = cos(rad_z);
+    double sin_z = sin(rad_z);
+    double x3 = x2 * cos_z - y1 * sin_z;
+    double y3 = x2 * sin_z + y1 * cos_z;
+    *rx = x3;
+    *ry = y3;
+    *rz = z2;
 }
 
 
 void isometric_projection(int x, int y, int z, int *x_out, int *y_out, double angle_x, double angle_y, double angle_z)
 {
-	double rx, ry, rz;
-
-	rotate_3d(x, y, z, &rx, &ry, &rz, angle_x, angle_y, angle_z);
-	*x_out = (int)((rx - ry) * cos(M_PI / 6));
-	*y_out = (int)((rx + ry) * sin(M_PI / 6) - rz);
+    double rx, ry, rz;
+    rotate_3d(x, y, z, &rx, &ry, &rz, angle_x, angle_y, angle_z);
+    double iso_x = (rx - ry) * cos(M_PI / 6);
+    double iso_y = (rx + ry) * sin(M_PI / 6) - rz;
+    double scale = 1.0;
+    iso_x *= scale;
+    iso_y *= scale;
+    *x_out = (int)iso_x;
+    *y_out = (int)iso_y;
 }
 
 
@@ -328,7 +348,7 @@ void calculate_min_max_z(int **new_map, char **map, double *z_min, double *z_max
     }
 }
 
-void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int **new_map, char **map, int center_x, int center_y, int x_offset, int y_offset, int x_angle, int y_angle, int z_angle, double z_min, double z_max)
+void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int center_x, int center_y, double z_min, double z_max, t_object obj)
 {
     int x, y, iso_x, iso_y, iso_next_x, iso_next_y, next_color;
     double z, next_z;
@@ -377,28 +397,28 @@ void draw_vertical_lines(t_data *img, int i, int j, int square_size, int **new_m
     }
 }
 
-void draw_map(t_data *img, int x_offset, int y_offset, int size, int color, int **new_map, char **map, int x_angle, int y_angle, int z_angle)
+void draw_map(t_data *img, t_object obj)
 {
 	int square_size, rows, cols, center_x, center_y;
 	double z_min, z_max;
 	int i, j;
 
-	check_map_null(new_map, map);
-	square_size = size;
+	check_map_null(obj.map_data.new_map, obj.map_data.map);
+	square_size = obj.size;
 	rows = 0;
-	while (new_map[rows])
+	while (obj.map_data.new_map[rows])
 		rows++;
-	cols = num_count(map[0]);
+	cols = num_count(obj.map_data.map[0]);
 	center_x = (cols * square_size) / 2;
 	center_y = (rows * square_size) / 2;
-	calculate_min_max_z(new_map, map, &z_min, &z_max);
+	calculate_min_max_z(obj.map_data.new_map, obj.map_data.map, &z_min, &z_max);
 	i = 0;
-	while (new_map[i])
+	while (obj.map_data.new_map[i])
 	{
 		j = 0;
-		while (j < num_count(map[i]))
+		while (j < num_count(obj.map_data.map[i]))
 		{
-			draw_horizontal_lines(img, i, j, square_size, new_map, map, center_x, center_y, x_offset, y_offset, x_angle, y_angle, z_angle, z_min, z_max);
+			draw_horizontal_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
 			draw_vertical_lines(img, i, j, square_size, new_map, map, center_x, center_y, x_offset, y_offset, x_angle, y_angle, z_angle, z_min, z_max);
 			j++;
 		}
@@ -435,9 +455,9 @@ int read_input(int keycode, t_object *obj)
         obj->angle_y += 5;
 	else if (keycode == XK_f)
 	{
-		obj->axis_selected++;
-		if (obj->axis_selected == 2)
-			obj->axis_selected = 0;
+		obj->mouse_data.axis_selected++;
+		if (obj->mouse_data.axis_selected == 3)
+			obj->mouse_data.axis_selected = 0;
 	}
 
     mlx_destroy_image(obj->img.mlx, obj->img.img);
@@ -466,9 +486,9 @@ void	move_graph(t_object *obj, int x, int y)
 		draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
 		mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
 		if (abs(obj->x_pos - target_x) < 15 && abs(obj->y_pos - target_y) < 15)
-			speed += 0.5;
+			speed = 1;
 		else
-			speed = 0.1;
+			speed = 0.3;
 	}
 }
 
@@ -485,7 +505,7 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 	}
 	else if (button == 1)
 	{
-		obj->mouse_pressed = 1;
+		obj->mouse_data.mouse_pressed = 1;
 		move_graph(obj, x, y);
 	}
 	else if (button == 2)
@@ -498,7 +518,7 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 	}
 	else if (button == 3)
 	{
-		obj->right_mouse_pressed = 1;
+		obj->mouse_data.right_mouse_pressed = 1;
 	}
 	mlx_destroy_image(obj->img.mlx, obj->img.img);
 	obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
@@ -511,15 +531,19 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 int release_mouse(int button, int x, int y, t_object *obj)
 {
 	if (button == 1)
-		obj->mouse_pressed = 0;
+		obj->mouse_data.mouse_pressed = 0;
 	if (button == 3)
-		obj->right_mouse_pressed = 0;
+	{
+		obj->mouse_data.right_mouse_pressed = 0;
+		obj->mouse_data.initial_mouse_pos[0] = 0;
+		obj->mouse_data.initial_mouse_pos[1] = 0;
+	}
 	return 0;
 }
 
 int handle_mouse_move(int x, int y, t_object *obj)
 {
-	if (obj->mouse_pressed)
+	if (obj->mouse_data.mouse_pressed)
 	{
 		int center_x = (obj->map_size[1] * obj->size) * 0.5;
 		int center_y = (obj->map_size[0] * obj->size) * 0.5;
@@ -535,31 +559,42 @@ int handle_mouse_move(int x, int y, t_object *obj)
 		draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
 		mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
 	}
-	if (obj->right_mouse_pressed)
+	if (obj->mouse_data.right_mouse_pressed)
 	{
-		/* if (obj->axis_selected == 0)
+		int delta_x = x - obj->mouse_data.initial_mouse_pos[0];
+		int delta_y = y - obj->mouse_data.initial_mouse_pos[1];
+        if (obj->mouse_data.axis_selected == 0)
+        {
+			if (delta_x < 0)
+            	obj->angle_z += obj->mouse_data.mouse_speed;
+			else
+				obj->angle_z -= obj->mouse_data.mouse_speed;
+        }
+        else if (obj->mouse_data.axis_selected == 1)
+        {
+			if (delta_y < 0)
+				obj->angle_x += obj->mouse_data.mouse_speed;
+			else
+				obj->angle_x -= obj->mouse_data.mouse_speed;
+        }
+		else if (obj->mouse_data.axis_selected == 2)
 		{
-			int delta_x = x - obj->last_x;
-			obj->angle_z += delta_x * 0.5;
-			obj->last_x = x;
+			if (delta_x < 0)
+            	obj->angle_z += obj->mouse_data.mouse_speed * 0.5;
+			else
+				obj->angle_z -= obj->mouse_data.mouse_speed * 0.5;
+			if (delta_y < 0)
+				obj->angle_x += obj->mouse_data.mouse_speed * 0.5;
+			else
+				obj->angle_x -= obj->mouse_data.mouse_speed * 0.5;
 		}
-		else if (obj->axis_selected == 1)
-		{
-			int delta_y = y - obj->last_y;
-			obj->angle_x += -delta_y * 0.5;
-			obj->last_y = y;
-		} */
-		int delta_x = abs(x) - obj->last_x;
-			obj->angle_z += -delta_x * 0.2;
-			obj->last_x = x;
-		int delta_y = abs(y) - obj->last_y;
-			obj->angle_x += -delta_y * 0.2;
-			obj->last_y = y;
 		mlx_destroy_image(obj->img.mlx, obj->img.img);
 		obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
 		obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
 		draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
 		mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+		obj->mouse_data.initial_mouse_pos[0] = x;
+		obj->mouse_data.initial_mouse_pos[1] = y;
 	}
 	return 0;
 }
@@ -568,16 +603,19 @@ int main(int ac, char **av)
 {
 	t_object obj = {0};
 	obj.color = 0x00FFFFFF;
-	obj.angle_x = 0;
-	obj.angle_y = 0;
-	obj.angle_z = 0;
-	obj.x_pos = SCREENX / 2;
-	obj.y_pos = SCREENY / 2;
-	obj.mouse_pressed = 0;
-	obj.right_mouse_pressed = 0;
-	obj.last_x = SCREENX / 2;
-	obj.last_y = SCREENY / 2;
-	obj.axis_selected = 0;
+	obj.transform.angle_x = 0;
+	obj.transform.angle_y = 0;
+	obj.transform.angle_z = 0;
+	obj.transform.x_pos = SCREENX / 2;
+	obj.transform.y_pos = SCREENY / 2;
+	obj.mouse_data.mouse_pressed = 0;
+	obj.mouse_data.right_mouse_pressed = 0;
+	obj.transform.last_x = SCREENX / 2;
+	obj.transform.last_y = SCREENY / 2;
+	obj.mouse_data.axis_selected = 0;
+	obj.mouse_data.initial_mouse_pos[0] = 0;
+	obj.mouse_data.initial_mouse_pos[1] = 0;
+	obj.mouse_data.mouse_speed = 5;
 
 	obj.map = read_map(av);
 	if (!obj.map)
@@ -591,7 +629,7 @@ int main(int ac, char **av)
 	obj.img.img = mlx_new_image(obj.img.mlx, SCREENX, SCREENY);
 	obj.img.addr = mlx_get_data_addr(obj.img.img, &obj.img.bits_per_pixel, &obj.img.line_length, &obj.img.endian);
 
-	draw_map(&obj.img, obj.x_pos, obj.y_pos, obj.size, obj.color, obj.new_map, obj.map, obj.angle_x, obj.angle_y, obj.angle_z);
+	draw_map(&obj.img, obj);
 	mlx_put_image_to_window(obj.img.mlx, obj.img.win, obj.img.img, 0, 0);
 	mlx_hook(obj.img.win, KeyPress, KeyPressMask, read_input, &obj);
 	mlx_hook(obj.img.win, ButtonPress, ButtonPressMask, read_mouse, &obj);
