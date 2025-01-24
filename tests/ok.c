@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   ok.c                                               :+:      :+:    :+:   */
+/*   prova.c                                            :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: gpicchio <gpicchio@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/01/17 10:36:16 by gpicchio          #+#    #+#             */
-/*   Updated: 2025/01/23 11:31:08 by gpicchio         ###   ########.fr       */
+/*   Updated: 2025/01/23 15:03:28 by gpicchio         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,9 +22,31 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/time.h>
 #include "fdf.h"
 #define SCREENX 1920
 #define SCREENY 1080
+
+typedef struct s_camera
+{
+    double position[3];
+    double target[3];
+    double azimuth;
+    double elevation;
+    double distance;
+} t_camera;
+
+typedef struct s_button {
+    int x;
+    int y;
+    int width;
+    int height;
+    int base_color;
+    int hover_color;
+    int is_hovered;
+    int (*funct_ptr)();
+    void *param;
+}           t_button;
 
 typedef struct	s_data {
 	void	*img;
@@ -64,13 +86,21 @@ typedef struct s_transform {
 typedef struct s_object
 {
     t_data img;
+	t_button x_axis_button;
+	t_button y_axis_button;
+	t_button z_axis_button;
     int color;
     t_map_data map_data;
     t_transform transform;
 	t_mouse_data mouse_data;
+	t_camera camera;
 	int	size;
+    double view_matrix[16];
 }		t_object;
 
+void	draw_all(t_object *obj, t_data *img);
+void	draw_map(t_data *img, t_object *obj);
+void	draw_buttons(t_object *obj);
 
 void my_mlx_pixel_put(t_data *data, int x, int y, int color)
 {
@@ -80,6 +110,73 @@ void my_mlx_pixel_put(t_data *data, int x, int y, int color)
     }
     char *dst = data->addr + (y * data->line_length + x * (data->bits_per_pixel / 8));
     *(unsigned int *)dst = color;
+}
+
+void	draw_all(t_object *obj, t_data *img)
+{
+	mlx_destroy_image(obj->img.mlx, obj->img.img);
+	obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
+	obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
+	draw_map(img, obj);
+	draw_buttons(obj);
+	mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+}
+
+void	draw_rectangle(t_data *img, int x, int y, int width, int height, int color)
+{
+	int i, j;
+	i = 0;
+	while (i < height)
+	{
+		j = 0;
+		while (j < width)
+		{
+			my_mlx_pixel_put(img, x + j, y + i, color);
+			j++;
+		}
+		i++;
+	}
+}
+
+int    is_mouse_over(t_button *button, int mouse_x, int mouse_y)
+{
+    return (mouse_x >= button->x && mouse_x <= (button->x + button->width) &&
+		 mouse_y >= button->y && mouse_y <= (button->y + button->height));
+}
+
+void    draw_buttons(t_object *obj)
+{
+	obj->x_axis_button.x = 10;
+	obj->x_axis_button.y = 10;
+	obj->x_axis_button.width = 50;
+	obj->x_axis_button.height = 50;
+	obj->x_axis_button.base_color = 0x00FF0000;
+	obj->x_axis_button.hover_color = 0x00FFFFFF;
+	if (obj->x_axis_button.is_hovered)
+		draw_rectangle(&obj->img, obj->x_axis_button.x, obj->x_axis_button.y, obj->x_axis_button.width, obj->x_axis_button.height, obj->x_axis_button.hover_color);
+	else
+		draw_rectangle(&obj->img, obj->x_axis_button.x, obj->x_axis_button.y, obj->x_axis_button.width, obj->x_axis_button.height, obj->x_axis_button.base_color);
+	obj->y_axis_button.x = 70;
+	obj->y_axis_button.y = 10;
+	obj->y_axis_button.width = 50;
+	obj->y_axis_button.height = 50;
+	obj->y_axis_button.base_color = 0x0000FF00;
+	obj->y_axis_button.hover_color = 0x00FFFFFF;
+	if (obj->y_axis_button.is_hovered)
+		draw_rectangle(&obj->img, obj->y_axis_button.x, obj->y_axis_button.y, obj->y_axis_button.width, obj->y_axis_button.height, obj->y_axis_button.hover_color);
+	else
+		draw_rectangle(&obj->img, obj->y_axis_button.x, obj->y_axis_button.y, obj->y_axis_button.width, obj->y_axis_button.height, obj->y_axis_button.base_color);
+	
+	obj->z_axis_button.x = 130;
+	obj->z_axis_button.y = 10;
+	obj->z_axis_button.width = 50;
+	obj->z_axis_button.height = 50;
+	obj->z_axis_button.base_color = 0x000000FF;
+	obj->z_axis_button.hover_color = 0x00FFFFFF;
+	if (obj->z_axis_button.is_hovered)
+		draw_rectangle(&obj->img, obj->z_axis_button.x, obj->z_axis_button.y, obj->z_axis_button.width, obj->z_axis_button.height, obj->z_axis_button.hover_color);
+	else
+		draw_rectangle(&obj->img, obj->z_axis_button.x, obj->z_axis_button.y, obj->z_axis_button.width, obj->z_axis_button.height, obj->z_axis_button.base_color);
 }
 
 void	draw_circle(t_data *img, int x, int y, int radius, int color)
@@ -95,6 +192,57 @@ void	draw_circle(t_data *img, int x, int y, int radius, int color)
 		my_mlx_pixel_put(img, x + x1, y + y1, color);
 	}
 }
+
+void normalize_vector(double *v) {
+    double length = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (length != 0) {
+        v[0] /= length;
+        v[1] /= length;
+        v[2] /= length;
+    }
+}
+
+// Calcolo della matrice di vista per la camera
+void update_view_matrix(t_object *obj) {
+    double forward[3], right[3], up[3];
+    double *position = obj->camera.position;
+    double *target = obj->camera.target;
+
+    // Calcolo del vettore forward (direzione dalla posizione verso il target)
+    forward[0] = target[0] - position[0];
+    forward[1] = target[1] - position[1];
+    forward[2] = target[2] - position[2];
+    normalize_vector(forward);
+
+    // Calcolo del vettore right (cross product tra forward e il vettore "up" globale)
+    double global_up[3] = {0.0, 1.0, 0.0};
+    right[0] = forward[1] * global_up[2] - forward[2] * global_up[1];
+    right[1] = forward[2] * global_up[0] - forward[0] * global_up[2];
+    right[2] = forward[0] * global_up[1] - forward[1] * global_up[0];
+    normalize_vector(right);
+
+    // Calcolo del vettore up (cross product tra right e forward)
+    up[0] = right[1] * forward[2] - right[2] * forward[1];
+    up[1] = right[2] * forward[0] - right[0] * forward[2];
+    up[2] = right[0] * forward[1] - right[1] * forward[0];
+
+    // Creazione della matrice di vista (4x4)
+    double view_matrix[16] = {
+        right[0], up[0], -forward[0], 0.0,
+        right[1], up[1], -forward[1], 0.0,
+        right[2], up[2], -forward[2], 0.0,
+        -(right[0] * position[0] + right[1] * position[1] + right[2] * position[2]),
+        -(up[0] * position[0] + up[1] * position[1] + up[2] * position[2]),
+        forward[0] * position[0] + forward[1] * position[1] + forward[2] * position[2],
+        1.0
+    };
+
+    // Salva la matrice di vista nell'oggetto
+    for (int i = 0; i < 16; i++) {
+        obj->view_matrix[i] = view_matrix[i];
+    }
+}
+
 
 char **read_map(char **av)
 {
@@ -247,18 +395,30 @@ void rotate_3d(int x, int y, int z, double *rx, double *ry, double *rz, double a
 }
 
 
-void isometric_projection(int x, int y, int z, int *x_out, int *y_out, double angle_x, double angle_y, double angle_z)
-{
-    double rx, ry, rz;
-    rotate_3d(x, y, z, &rx, &ry, &rz, angle_x, angle_y, angle_z);
-    double iso_x = (rx - ry) * cos(M_PI / 6);
-    double iso_y = (rx + ry) * sin(M_PI / 6) - rz;
+void isometric_projection(int x, int y, int z, int *x_out, int *y_out, t_object *obj) {
+    double camera_space[4] = {x, y, z, 1.0}; // Aggiungi il termine omogeneo per moltiplicazioni matriciali
+    double transformed[4] = {0};
+
+    // Applica la matrice di vista
+    for (int i = 0; i < 4; i++) {
+        transformed[i] = obj->view_matrix[i * 4 + 0] * camera_space[0] +
+                         obj->view_matrix[i * 4 + 1] * camera_space[1] +
+                         obj->view_matrix[i * 4 + 2] * camera_space[2] +
+                         obj->view_matrix[i * 4 + 3] * camera_space[3];
+    }
+
+    // Proiezione isometrica (considera solo x e y per la proiezione finale)
+    double iso_x = (transformed[0] - transformed[1]) * cos(M_PI / 6);
+    double iso_y = (transformed[0] + transformed[1]) * sin(M_PI / 6) - transformed[2];
+
     double scale = 1.0;
     iso_x *= scale;
     iso_y *= scale;
+
     *x_out = (int)iso_x;
     *y_out = (int)iso_y;
 }
+
 
 
 int interpolate_color(int color_start, int color_end, double t) {
@@ -348,48 +508,48 @@ void calculate_min_max_z(int **new_map, char **map, double *z_min, double *z_max
     }
 }
 
-void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int center_x, int center_y, double z_min, double z_max, t_object obj)
+void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int center_x, int center_y, double z_min, double z_max, t_object *obj)
 {
     int x, y, iso_x, iso_y, iso_next_x, iso_next_y, next_color;
     double z, next_z;
 
     x = j * square_size - center_x;
     y = i * square_size - center_y;
-    z = new_map[i][j] * square_size / 5.0;
-    isometric_projection(x, y, z, &iso_x, &iso_y, x_angle, y_angle, z_angle);
-    iso_x += center_x + x_offset;
-    iso_y += center_y + y_offset;
-    if (j + 1 < num_count(map[i]))
+    z = obj->map_data.new_map[i][j] * square_size / 5.0;
+	isometric_projection(x, y, z, &iso_x, &iso_y, obj);
+    iso_x += center_x + obj->transform.x_pos;
+    iso_y += center_y + obj->transform.y_pos;
+    if (j + 1 < num_count(obj->map_data.map[i]))
     {
-        next_z = new_map[i][j + 1] * square_size / 5.0;
-        isometric_projection((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, x_angle, y_angle, z_angle);
-        iso_next_x += center_x + x_offset;
-        iso_next_y += center_y + y_offset;
+        next_z = obj->map_data.new_map[i][j + 1] * square_size / 5.0;
+        isometric_projection((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, obj);
+        iso_next_x += center_x + obj->transform.x_pos;
+        iso_next_y += center_y + obj->transform.y_pos;
 
         next_color = calculate_color(next_z, z_min, z_max);
         draw_line(img, iso_x, iso_y, iso_next_x, iso_next_y, calculate_color(z, z_min, z_max), next_color);
     }
 }
 
-void draw_vertical_lines(t_data *img, int i, int j, int square_size, int **new_map, char **map, int center_x, int center_y, int x_offset, int y_offset, int x_angle, int y_angle, int z_angle, double z_min, double z_max)
+void draw_vertical_lines(t_data *img, int i, int j, int square_size, int center_x, int center_y, double z_min, double z_max, t_object *obj)
 {
     int x, y, iso_x, iso_y, iso_below_x, iso_below_y, below_color;
     double z, below_z;
 
     x = j * square_size - center_x;
     y = i * square_size - center_y;
-    z = new_map[i][j] * square_size / 5.0;
-    isometric_projection(x, y, z, &iso_x, &iso_y, x_angle, y_angle, z_angle);
-    iso_x += center_x + x_offset;
-    iso_y += center_y + y_offset;
-    if (new_map[i + 1])
+    z = obj->map_data.new_map[i][j] * square_size / 5.0;
+    isometric_projection(x, y, z, &iso_x, &iso_y, obj);
+    iso_x += center_x + obj->transform.x_pos;
+    iso_y += center_y + obj->transform.y_pos;
+    if (obj->map_data.new_map[i + 1])
     {
-        below_z = new_map[i + 1][j] * square_size / 5.0;
+        below_z = obj->map_data.new_map[i + 1][j] * square_size / 5.0;
         isometric_projection(x, (i + 1) * square_size - center_y,
                              below_z, &iso_below_x, &iso_below_y,
-                             x_angle, y_angle, z_angle);
-        iso_below_x += center_x + x_offset;
-        iso_below_y += center_y + y_offset;
+                             obj);
+        iso_below_x += center_x + obj->transform.x_pos;
+        iso_below_y += center_y + obj->transform.y_pos;
 
         below_color = calculate_color(below_z, z_min, z_max);
         draw_line(img, iso_x, iso_y, iso_below_x, iso_below_y,
@@ -397,34 +557,38 @@ void draw_vertical_lines(t_data *img, int i, int j, int square_size, int **new_m
     }
 }
 
-void draw_map(t_data *img, t_object obj)
+void draw_map(t_data *img, t_object *obj)
 {
-	int square_size, rows, cols, center_x, center_y;
-	double z_min, z_max;
-	int i, j;
+    int square_size, rows, cols, center_x, center_y;
+    double z_min, z_max;
+    int i, j;
 
-	check_map_null(obj.map_data.new_map, obj.map_data.map);
-	square_size = obj.size;
-	rows = 0;
-	while (obj.map_data.new_map[rows])
-		rows++;
-	cols = num_count(obj.map_data.map[0]);
-	center_x = (cols * square_size) / 2;
-	center_y = (rows * square_size) / 2;
-	calculate_min_max_z(obj.map_data.new_map, obj.map_data.map, &z_min, &z_max);
-	i = 0;
-	while (obj.map_data.new_map[i])
-	{
-		j = 0;
-		while (j < num_count(obj.map_data.map[i]))
-		{
-			draw_horizontal_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
-			draw_vertical_lines(img, i, j, square_size, new_map, map, center_x, center_y, x_offset, y_offset, x_angle, y_angle, z_angle, z_min, z_max);
-			j++;
-		}
-		i++;
-	}
+    check_map_null(obj->map_data.new_map, obj->map_data.map);
+    square_size = obj->size;
+    rows = 0;
+    while (obj->map_data.new_map[rows])
+        rows++;
+    cols = num_count(obj->map_data.map[0]);
+    center_x = (cols * square_size) / 2;
+    center_y = (rows * square_size) / 2;
+
+    calculate_min_max_z(obj->map_data.new_map, obj->map_data.map, &z_min, &z_max);
+
+    update_view_matrix(obj);
+
+    i = 0;
+    while (obj->map_data.new_map[i]) {
+        j = 0;
+        while (j < num_count(obj->map_data.map[i])) {
+            draw_horizontal_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
+            draw_vertical_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
+            j++;
+        }
+        i++;
+    }
 }
+
+
 int	calculate_size(char **map, t_object *obj)
 {
 	int rows = 0;
@@ -432,27 +596,52 @@ int	calculate_size(char **map, t_object *obj)
 		rows++;
 	int cols = num_count(map[0]);
 	int size = (SCREENX / cols < SCREENY / rows) ? SCREENX / cols : SCREENY / rows;
-	obj->map_size[0] = rows;
-	obj->map_size[1] = cols;
+	obj->map_data.size_x = rows;
+	obj->map_data.size_y = cols;
 	return size / 3;
 }
+
+int handle_camera_input(int key, t_object *obj) {
+    if (key == XK_w) // Avanza
+        obj->camera.position[2] += 1.0;
+    if (key == XK_s) // Indietreggia
+        obj->camera.position[2] -= 1.0;
+    if (key == XK_a) // Sposta a sinistra
+        obj->camera.position[0] -= 1.0;
+    if (key == XK_d) // Sposta a destra
+        obj->camera.position[0] += 1.0;
+    if (key == XK_q) // Ruota a sinistra
+        obj->transform.angle_y -= 5.0;
+    if (key == XK_e) // Ruota a destra
+        obj->transform.angle_y += 5.0;
+
+    // Aggiorna il target se necessario
+    obj->camera.target[0] = 0.0;
+    obj->camera.target[1] = 0.0;
+    obj->camera.target[2] = 0.0;
+
+    update_view_matrix(obj); // Aggiorna la matrice di vista
+	draw_all(obj, &obj->img); // Ridisegna la mappa
+	return 0;
+}
+
 
 int read_input(int keycode, t_object *obj)
 {
     if (keycode == XK_Escape)
         exit(0);
     else if (keycode == XK_w)
-        obj->angle_x += 5;
+        obj->transform.angle_x += 5;
     else if (keycode == XK_s)
-        obj->angle_x -= 5;
+        obj->transform.angle_x -= 5;
     else if (keycode == XK_a)
-        obj->angle_z -= 5;
+        obj->transform.angle_z -= 5;
     else if (keycode == XK_d)
-        obj->angle_z += 5;
+        obj->transform.angle_z += 5;
     else if (keycode == XK_q)
-        obj->angle_y -= 5;
+        obj->transform.angle_y -= 5;
     else if (keycode == XK_e)
-        obj->angle_y += 5;
+        obj->transform.angle_y += 5;
 	else if (keycode == XK_f)
 	{
 		obj->mouse_data.axis_selected++;
@@ -460,32 +649,24 @@ int read_input(int keycode, t_object *obj)
 			obj->mouse_data.axis_selected = 0;
 	}
 
-    mlx_destroy_image(obj->img.mlx, obj->img.img);
-    obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-    obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-    draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
-    mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+    draw_all(obj, &obj->img);
     return 0;
 }
 
 void	move_graph(t_object *obj, int x, int y)
 {
-	int center_x = (obj->map_size[1] * obj->size) / 2;
-	int center_y = (obj->map_size[0] * obj->size) / 2;
+	int center_x = (obj->map_data.size_x * obj->size) / 2;
+	int center_y = (obj->map_data.size_y * obj->size) / 2;
 	int target_x = x - center_x;
 	int target_y = y - center_y;
 
 	double speed = 0.1;
-	while (obj->x_pos != target_x || obj->y_pos != target_y)
+	while (obj->transform.x_pos != target_x || obj->transform.y_pos != target_y)
 	{
-		obj->x_pos += (int)((target_x - obj->x_pos) * speed);
-		obj->y_pos += (int)((target_y - obj->y_pos) * speed);
-		mlx_destroy_image(obj->img.mlx, obj->img.img);
-		obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-		obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-		draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
-		mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
-		if (abs(obj->x_pos - target_x) < 15 && abs(obj->y_pos - target_y) < 15)
+		obj->transform.x_pos += (int)((target_x - obj->transform.x_pos) * speed);
+		obj->transform.y_pos += (int)((target_y - obj->transform.y_pos) * speed);
+		draw_all(obj, &obj->img);
+		if (abs(obj->transform.x_pos - target_x) < 15 && abs(obj->transform.y_pos - target_y) < 15)
 			speed = 1;
 		else
 			speed = 0.3;
@@ -496,35 +677,49 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 {
 	if (button == 4)
 	{
+		int center_x = (obj->map_data.size_x * obj->size) / 2;
+		int center_y = (obj->map_data.size_y * obj->size) / 2;
 		obj->size += (obj->size / 3) + 1;
+		obj->transform.x_pos -= (x - center_x) / 10;
+		obj->transform.y_pos -= (y - center_y) / 10;
 	}
 	else if (button == 5)
 	{
 		if (obj->size > 2)
+		{
+			int center_x = (obj->map_data.size_x * obj->size) / 2;
+			int center_y = (obj->map_data.size_y * obj->size) / 2;
 			obj->size -= (obj->size / 3) - 1;
+			obj->transform.x_pos += (x - center_x) / 10;
+			obj->transform.y_pos += (y - center_y) / 10;
+		}
 	}
 	else if (button == 1)
 	{
-		obj->mouse_data.mouse_pressed = 1;
-		move_graph(obj, x, y);
+		if (obj->x_axis_button.is_hovered)
+			obj->mouse_data.axis_selected = 0;
+		else if (obj->y_axis_button.is_hovered)
+			obj->mouse_data.axis_selected = 1;
+		else if (obj->z_axis_button.is_hovered)
+			obj->mouse_data.axis_selected = 2;
+		else {
+			obj->mouse_data.mouse_pressed = 1;
+			move_graph(obj, x, y);
+		}
 	}
 	else if (button == 2)
 	{
-		obj->angle_x = 0;
-		obj->angle_y = 0;
-		obj->angle_z = 0;
-		obj->x_pos = SCREENX / 2;
-		obj->y_pos = SCREENY / 2;
+		obj->transform.angle_x = 0;
+		obj->transform.angle_y = 0;
+		obj->transform.angle_z = 0;
+		obj->transform.x_pos = SCREENX / 2;
+		obj->transform.y_pos = SCREENY / 2;
 	}
 	else if (button == 3)
 	{
 		obj->mouse_data.right_mouse_pressed = 1;
 	}
-	mlx_destroy_image(obj->img.mlx, obj->img.img);
-	obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-	obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-	draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
-	mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+	draw_all(obj, &obj->img);
 	return 0;
 }
 
@@ -543,21 +738,38 @@ int release_mouse(int button, int x, int y, t_object *obj)
 
 int handle_mouse_move(int x, int y, t_object *obj)
 {
+	static struct timeval last_time = {0, 0};
+    struct timeval current_time;
+
+    gettimeofday(&current_time, NULL);
+    long elapsed = (current_time.tv_sec - last_time.tv_sec) * 1000 +
+                   (current_time.tv_usec - last_time.tv_usec) / 1000;
+
+    if (elapsed < 16)
+        return (0);
+
+    last_time = current_time;
+
+	obj->x_axis_button.is_hovered = is_mouse_over(&obj->x_axis_button, x, y);
+	obj->y_axis_button.is_hovered = is_mouse_over(&obj->y_axis_button, x, y);
+	obj->z_axis_button.is_hovered = is_mouse_over(&obj->z_axis_button, x, y);
+	
+    if (obj->x_axis_button.is_hovered || obj->y_axis_button.is_hovered || obj->z_axis_button.is_hovered)
+        draw_all(obj, &obj->img);
+	if (!obj->x_axis_button.is_hovered || !obj->y_axis_button.is_hovered || !obj->z_axis_button.is_hovered)
+		draw_all(obj, &obj->img);
+	
 	if (obj->mouse_data.mouse_pressed)
 	{
-		int center_x = (obj->map_size[1] * obj->size) * 0.5;
-		int center_y = (obj->map_size[0] * obj->size) * 0.5;
+		int center_x = (obj->map_data.size_x * obj->size) * 0.5;
+		int center_y = (obj->map_data.size_y * obj->size) * 0.5;
 		int target_x = x - center_x;
 		int target_y = y - center_y;
 
 		double speed = 0.5;
-		obj->x_pos += (int)((target_x - obj->x_pos) * speed);
-		obj->y_pos += (int)((target_y - obj->y_pos) * speed);
-		mlx_destroy_image(obj->img.mlx, obj->img.img);
-		obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-		obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-		draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
-		mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+		obj->transform.x_pos += (int)((target_x - obj->transform.x_pos) * speed);
+		obj->transform.y_pos += (int)((target_y - obj->transform.y_pos) * speed);
+		draw_all(obj, &obj->img);
 	}
 	if (obj->mouse_data.right_mouse_pressed)
 	{
@@ -566,35 +778,52 @@ int handle_mouse_move(int x, int y, t_object *obj)
         if (obj->mouse_data.axis_selected == 0)
         {
 			if (delta_x < 0)
-            	obj->angle_z += obj->mouse_data.mouse_speed;
+            	obj->transform.angle_z += obj->mouse_data.mouse_speed;
 			else
-				obj->angle_z -= obj->mouse_data.mouse_speed;
+				obj->transform.angle_z -= obj->mouse_data.mouse_speed;
         }
         else if (obj->mouse_data.axis_selected == 1)
         {
 			if (delta_y < 0)
-				obj->angle_x += obj->mouse_data.mouse_speed;
+				obj->transform.angle_x += obj->mouse_data.mouse_speed;
 			else
-				obj->angle_x -= obj->mouse_data.mouse_speed;
+				obj->transform.angle_x -= obj->mouse_data.mouse_speed;
         }
 		else if (obj->mouse_data.axis_selected == 2)
 		{
 			if (delta_x < 0)
-            	obj->angle_z += obj->mouse_data.mouse_speed * 0.5;
+				obj->transform.angle_y += obj->mouse_data.mouse_speed;
 			else
-				obj->angle_z -= obj->mouse_data.mouse_speed * 0.5;
-			if (delta_y < 0)
-				obj->angle_x += obj->mouse_data.mouse_speed * 0.5;
-			else
-				obj->angle_x -= obj->mouse_data.mouse_speed * 0.5;
+				obj->transform.angle_y -= obj->mouse_data.mouse_speed;
 		}
-		mlx_destroy_image(obj->img.mlx, obj->img.img);
-		obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-		obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-		draw_map(&obj->img, obj->x_pos, obj->y_pos, obj->size, obj->color, obj->new_map, obj->map, obj->angle_x, obj->angle_y, obj->angle_z);
-		mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
-		obj->mouse_data.initial_mouse_pos[0] = x;
-		obj->mouse_data.initial_mouse_pos[1] = y;
+		else if (obj->mouse_data.axis_selected == 3)
+		{
+			double sensitivity = 0.005; // Sensibilità del mouse per rotazioni
+			int delta_x = x - obj->mouse_data.initial_mouse_pos[0];
+			int delta_y = y - obj->mouse_data.initial_mouse_pos[1];
+
+			// Aggiorna gli angoli sferici (azimut e elevazione)
+			obj->camera.azimuth += delta_x * sensitivity;
+			obj->camera.elevation += delta_y * sensitivity;
+
+			// Limita l'elevazione per evitare un'inversione della vista
+			if (obj->camera.elevation > 1.5) // circa 85 gradi
+				obj->camera.elevation = 1.5;
+			if (obj->camera.elevation < -1.5) // circa -85 gradi
+				obj->camera.elevation = -1.5;
+
+			// Calcola la nuova posizione della telecamera in coordinate cartesiane
+			double radius = obj->camera.distance;
+			obj->camera.position[0] = radius * cos(obj->camera.elevation) * cos(obj->camera.azimuth);
+			obj->camera.position[1] = radius * sin(obj->camera.elevation);
+			obj->camera.position[2] = radius * cos(obj->camera.elevation) * sin(obj->camera.azimuth);
+
+			// Aggiorna la vista
+			update_view_matrix(obj);
+				}
+				draw_all(obj, &obj->img);
+				obj->mouse_data.initial_mouse_pos[0] = x;
+				obj->mouse_data.initial_mouse_pos[1] = y;
 	}
 	return 0;
 }
@@ -616,22 +845,30 @@ int main(int ac, char **av)
 	obj.mouse_data.initial_mouse_pos[0] = 0;
 	obj.mouse_data.initial_mouse_pos[1] = 0;
 	obj.mouse_data.mouse_speed = 5;
+	obj.camera.azimuth = 0.0;
+	obj.camera.elevation = 0.0;
+	obj.camera.distance = 10.0;
+	obj.camera.position[0] = 0.0;
+	obj.camera.position[1] = 0.0;
+	obj.camera.position[2] = 10.0;
+	obj.camera.target[0] = 0.0;
+	obj.camera.target[1] = 0.0;
+	obj.camera.target[2] = 0.0;
 
-	obj.map = read_map(av);
-	if (!obj.map)
+	obj.map_data.map = read_map(av);
+	if (!obj.map_data.map)
 		return 0;
-	obj.size = calculate_size(obj.map, &obj);
-	obj.new_map = transform_map(obj.map);
-	if (!obj.new_map)
+	obj.size = calculate_size(obj.map_data.map, &obj);
+	obj.map_data.new_map = transform_map(obj.map_data.map);
+	if (!obj.map_data.new_map)
 		return 0;
 	obj.img.mlx = mlx_init();
-	obj.img.win = mlx_new_window(obj.img.mlx, SCREENX, SCREENY, "Hello world!");
+	obj.img.win = mlx_new_window(obj.img.mlx, SCREENX, SCREENY, "The best Fdf ever");
 	obj.img.img = mlx_new_image(obj.img.mlx, SCREENX, SCREENY);
 	obj.img.addr = mlx_get_data_addr(obj.img.img, &obj.img.bits_per_pixel, &obj.img.line_length, &obj.img.endian);
 
-	draw_map(&obj.img, obj);
-	mlx_put_image_to_window(obj.img.mlx, obj.img.win, obj.img.img, 0, 0);
-	mlx_hook(obj.img.win, KeyPress, KeyPressMask, read_input, &obj);
+	draw_all(&obj, &obj.img);
+	mlx_hook(obj.img.win, KeyPress, KeyPressMask, handle_camera_input, &obj);
 	mlx_hook(obj.img.win, ButtonPress, ButtonPressMask, read_mouse, &obj);
     mlx_hook(obj.img.win, ButtonRelease, ButtonReleaseMask, release_mouse, &obj);
     mlx_hook(obj.img.win, MotionNotify, PointerMotionMask, handle_mouse_move, &obj);

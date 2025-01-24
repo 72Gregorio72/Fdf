@@ -575,12 +575,22 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 {
 	if (button == 4)
 	{
+		int center_x = (obj->map_data.size_x * obj->size) / 2;
+		int center_y = (obj->map_data.size_y * obj->size) / 2;
 		obj->size += (obj->size / 3) + 1;
+		obj->transform.x_pos -= (x - center_x) / 10;
+		obj->transform.y_pos -= (y - center_y) / 10;
 	}
 	else if (button == 5)
 	{
 		if (obj->size > 2)
+		{
+			int center_x = (obj->map_data.size_x * obj->size) / 2;
+			int center_y = (obj->map_data.size_y * obj->size) / 2;
 			obj->size -= (obj->size / 3) - 1;
+			obj->transform.x_pos += (x - center_x) / 10;
+			obj->transform.y_pos += (y - center_y) / 10;
+		}
 	}
 	else if (button == 1)
 	{
@@ -633,7 +643,7 @@ int handle_mouse_move(int x, int y, t_object *obj)
     long elapsed = (current_time.tv_sec - last_time.tv_sec) * 1000 +
                    (current_time.tv_usec - last_time.tv_usec) / 1000;
 
-    if (elapsed < 16)  // Limita a circa 60 fps (16 ms)
+    if (elapsed < 16)
         return (0);
 
     last_time = current_time;
@@ -677,12 +687,24 @@ int handle_mouse_move(int x, int y, t_object *obj)
 			else
 				obj->transform.angle_x -= obj->mouse_data.mouse_speed;
         }
-		else if (obj->mouse_data.axis_selected == 2)
+		else if (obj->mouse_data.axis_selected == 3)
 		{
-			if (delta_y < 0)
+			if (delta_x < 0)
 				obj->transform.angle_y += obj->mouse_data.mouse_speed;
 			else
 				obj->transform.angle_y -= obj->mouse_data.mouse_speed;
+		}
+		else if (obj->mouse_data.axis_selected == 2)
+		{
+			if (delta_x < 0 && abs(delta_x) > abs(delta_y))
+				obj->transform.angle_z += obj->mouse_data.mouse_speed;
+			else if (abs(delta_x) > abs(delta_y))
+				obj->transform.angle_z -= obj->mouse_data.mouse_speed;
+
+			if (delta_y < 0 && abs(delta_y) > abs(delta_x))
+				obj->transform.angle_x += obj->mouse_data.mouse_speed;
+			else if (abs(delta_y) > abs(delta_x))
+				obj->transform.angle_x -= obj->mouse_data.mouse_speed;
 		}
 		draw_all(obj, &obj->img);
 		obj->mouse_data.initial_mouse_pos[0] = x;
