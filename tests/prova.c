@@ -312,7 +312,7 @@ int **transform_map(char **map)
 
 void rotate_3d(int x, int y, int z, double *rx, double *ry, double *rz, double angle_x, double angle_y, double angle_z)
 {
-    double rad_x = angle_x * M_PI / 180.0;
+    double rad_x = angle_x * M_PI / 360.0;
     double rad_y = angle_y * M_PI / 180.0;
     double rad_z = angle_z * M_PI / 180.0;
     double cos_x = cos(rad_x);
@@ -332,20 +332,36 @@ void rotate_3d(int x, int y, int z, double *rx, double *ry, double *rz, double a
     *rz = z2;
 }
 
-
-void isometric_projection(int x, int y, int z, int *x_out, int *y_out, double angle_x, double angle_y, double angle_z)
+double	normalize_angle(double angle)
 {
-    double rx, ry, rz;
-    rotate_3d(x, y, z, &rx, &ry, &rz, angle_x, angle_y, angle_z);
-    double iso_x = (rx - ry) * cos(M_PI / 6);
-    double iso_y = (rx + ry) * sin(M_PI / 6);
-    double scale = 1.0;
-    iso_x *= scale;
-    iso_y *= scale;
-    *x_out = (int)iso_x;
-    *y_out = (int)iso_y;
+    if (angle < 0)
+	{
+        angle += 360.0;
+    }
+	else if (angle >= 360.0)
+	{
+		angle -= 360.0;
+	}
+	return (angle);
 }
 
+
+void isometric_projection(int x, int y, int z, int *x_out, int *y_out, t_object *obj)
+{
+	obj->transform.angle_x = normalize_angle(obj->transform.angle_x);
+	obj->transform.angle_y = normalize_angle(obj->transform.angle_y);
+	obj->transform.angle_z = normalize_angle(obj->transform.angle_z);
+	double rx, ry, rz;
+	rotate_3d(x, y, z, &rx, &ry, &rz, obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+	printf("angle_x: %d\n", obj->transform.angle_x);
+	double iso_x = (rx - ry) * cos(M_PI / 6);
+	double iso_y = (rx + ry) * sin(M_PI / 6);
+	double scale = 1.0;
+	iso_x *= scale;
+	iso_y *= scale;
+	*x_out = (int)iso_x;
+	*y_out = (int)iso_y;
+}
 
 int interpolate_color(int color_start, int color_end, double t) {
 	int r_start = (color_start >> 16) & 0xFF;
@@ -442,13 +458,13 @@ void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int cente
     x = j * square_size - center_x;
     y = i * square_size - center_y;
     z = obj->map_data.new_map[i][j] * square_size / 5.0;
-    isometric_projection(x, y, z, &iso_x, &iso_y, obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+    isometric_projection(x, y, z, &iso_x, &iso_y, obj);
     iso_x += center_x + obj->transform.x_pos;
     iso_y += center_y + obj->transform.y_pos;
     if (j + 1 < num_count(obj->map_data.map[i]))
     {
         next_z = obj->map_data.new_map[i][j + 1] * square_size / 5.0;
-        isometric_projection((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+        isometric_projection((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, obj);
         iso_next_x += center_x + obj->transform.x_pos;
         iso_next_y += center_y + obj->transform.y_pos;
 
@@ -465,21 +481,18 @@ void draw_vertical_lines(t_data *img, int i, int j, int square_size, int center_
     x = j * square_size - center_x;
     y = i * square_size - center_y;
     z = obj->map_data.new_map[i][j] * square_size / 5.0;
-    isometric_projection(x, y, z, &iso_x, &iso_y, obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+    isometric_projection(x, y, z, &iso_x, &iso_y, obj);
     iso_x += center_x + obj->transform.x_pos;
     iso_y += center_y + obj->transform.y_pos;
     if (obj->map_data.new_map[i + 1])
     {
         below_z = obj->map_data.new_map[i + 1][j] * square_size / 5.0;
-        isometric_projection(x, (i + 1) * square_size - center_y,
-                             below_z, &iso_below_x, &iso_below_y,
-                             obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+        isometric_projection(x, (i + 1) * square_size - center_y, below_z, &iso_below_x, &iso_below_y, obj);
         iso_below_x += center_x + obj->transform.x_pos;
         iso_below_y += center_y + obj->transform.y_pos;
 
         below_color = calculate_color(below_z, z_min, z_max);
-        draw_line(img, iso_x, iso_y, iso_below_x, iso_below_y,
-                  calculate_color(z, z_min, z_max), below_color);
+        draw_line(img, iso_x, iso_y, iso_below_x, iso_below_y, calculate_color(z, z_min, z_max), below_color);
     }
 }
 
