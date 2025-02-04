@@ -42,9 +42,7 @@ char	*get_first_line(char *line)
 		return (NULL);
 	i = 0;
 	while (line[i] && line[i] != '\n')
-	{
 		i++;
-	}
 	first_line = (char *)malloc(i + 2);
 	if (!first_line)
 		return (NULL);
@@ -72,10 +70,17 @@ char	*append(int fd, char *line)
 			return (NULL);
 		}
 		buffer[rd] = '\0';
+		for (int i = 0; i < rd; i++) {
+            if (buffer[i] == '\r') {
+                buffer[i] = '\0';
+                break;
+            }
+        }
 		tmp = ft_strjoin(line, buffer);
 		free(line);
 		line = tmp;
 	}
+	line[ft_strlen(line)] = '\0';
 	free(buffer);
 	return (line);
 }
