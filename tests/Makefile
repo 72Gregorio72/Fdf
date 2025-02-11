@@ -1,7 +1,7 @@
 NAME = a
 MLX = -Lminilibx-linux minilibx-linux/libmlx_Linux.a -L/usr/lib -Iminilibx-linux -lXext -lX11 -lm -lz #-Iinclude
 CC = cc #-Wall -Werror -Wextra
-SRCS = prova.c
+SRCS = fdf.c
 INCLUDES = -Iincludes
 
 all: $(NAME)

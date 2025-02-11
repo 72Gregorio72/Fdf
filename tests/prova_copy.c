@@ -27,6 +27,11 @@
 #define SCREENX 1920
 #define SCREENY 1080
 
+typedef struct s_proj_point {
+    int x;
+    int y;
+}		t_proj_point;
+
 typedef struct s_button {
     int x;
     int y;
@@ -58,22 +63,37 @@ typedef struct s_mouse_data {
 	double mouse_speed;
 }			t_mouse_data;
 
+typedef struct s_int_map {
+	int num;
+	int color;
+	int trash;
+}		t_int_map;
+
 typedef struct s_map_data {
 	char **map;
 	int size_x;
 	int size_y;
-    int **new_map;
+	t_int_map **new_map;
 }			t_map_data;
 
 typedef struct s_transform {
-	int angle_x;
+    int angle_x;
     int angle_y;
-	int angle_z;
-	int	x_pos;
-	int	y_pos;
-	int last_x;
-	int last_y;
-}			t_transform;
+    int angle_z;
+    double rad_x;
+    double rad_y;
+    double rad_z;
+    double cos_x;
+    double sin_x;
+    double cos_y;
+    double sin_y;
+    double cos_z;
+    double sin_z;
+    int x_pos;
+    int y_pos;
+    int last_x;
+    int last_y;
+} t_transform;
 
 typedef struct s_object
 {
@@ -82,6 +102,7 @@ typedef struct s_object
 	t_button y_axis_button;
 	t_button z_axis_button;
 	t_button xy_axis_button;
+	t_button projection_button;
 	t_button	crazy_button;
     int color;
 	int color_end;
@@ -90,6 +111,8 @@ typedef struct s_object
 	t_mouse_data mouse_data;
 	int	size;
 	int crazy_mode;
+	int projection_mode;
+	t_proj_point **proj_points;
 }		t_object;
 
 void	draw_all(t_object *obj, t_data *img);
@@ -111,12 +134,10 @@ void my_mlx_pixel_put(t_data *data, int x, int y, int color)
 }
 void	draw_all(t_object *obj, t_data *img)
 {
-	mlx_destroy_image(obj->img.mlx, obj->img.img);
-	obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-	obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-	draw_map(img, obj);
-	mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
-	draw_buttons(obj);
+    ft_memset(img->addr, 0, SCREENX * SCREENY * (img->bits_per_pixel / 8));
+    draw_map(img, obj);
+    mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+    draw_buttons(obj);
 }
 
 void	draw_rectangle(t_data *img, int x, int y, int width, int height, int color, int radius)
@@ -185,7 +206,13 @@ void draw_buttons(t_object *obj)
 	text_y = obj->xy_axis_button.y + (obj->xy_axis_button.height / 2);
 	mlx_string_put(obj->img.mlx, obj->img.win, text_x, text_y, 0x000000, "XY Axis");
 
-	draw_button(obj, &obj->crazy_button, 10, 250, 100, 50, 0xff00ff, 0x800080);
+	draw_button(obj, &obj->projection_button, 10, 250, 100, 50, 0x00ffff, 0x008080);
+	text_x = obj->projection_button.x + (obj->projection_button.width / 2) - 20;
+	text_y = obj->projection_button.y + (obj->projection_button.height / 2);
+	mlx_string_put(obj->img.mlx, obj->img.win, text_x, text_y, 0x000000, "Parallel");
+	mlx_string_put(obj->img.mlx, obj->img.win, text_x - 7, text_y + 10, 0x000000, "Projection");
+
+	draw_button(obj, &obj->crazy_button, 10, 310, 100, 50, 0xff00ff, 0x800080);
 	text_x = obj->crazy_button.x + (obj->crazy_button.width / 2) - 20;
 	text_y = obj->crazy_button.y + (obj->crazy_button.height / 2);
 	mlx_string_put(obj->img.mlx, obj->img.win, text_x, text_y, 0x000000, "Crazy");
@@ -221,10 +248,34 @@ char **read_map(char **av)
 		return (perror("Error allocating memory"), close(fd), NULL);
 	while ((line = get_next_line(fd)) != NULL)
 	{
+		int k = 0;
+		while (line[k] && (ft_isdigit(line[k]) || line[k] == ' ' || line[k] == '-' || line[k] == '\n' || line[k] == ','))
+		{
+			ft_printf("line[%d]: %c\n", k, line[k]);
+			if (line[k] == ',' && (line[k + 1] == '0' && line[k + 2] == 'x'))
+			{
+				k += 3;
+				while(line[k] && ft_isdigit(line[k]) || (line[k] >= 'a' && line[k] <= 'f') || (line[k] >= 'A' && line[k] <= 'F'))
+					k++;
+				if (line[k] != ' ' && line[k] != '\0' && line[k] != '\n')
+					return (ft_printf("Error: Invalid color in map: %d\n", line[k]), NULL);
+			}
+			else if (!ft_isdigit(line[k]) && line[k] != ' ' && line[k] != '-' && line[k] != '\n')
+				return (ft_printf("Error: Invalid color in map: %c\n", line[k]), NULL);
+			k++;
+		}
+		if (line[k] != '\0')
+			return (ft_printf("Error: Invalid character in map: %c\n", line[k]), NULL);
 		if (i >= map_size)
 		{
 			map_size *= 2;
-			char **new_map = realloc(map, sizeof(char *) * map_size);
+			char **new_map = malloc(sizeof(char *) * map_size);
+			if (new_map) {
+				for (int j = 0; j < i; j++) {
+					new_map[j] = map[j];
+				}
+				free(map);
+			}
 			if (!new_map)
 				return (perror("Error reallocating memory"), close(fd), NULL);
 			map = new_map;
@@ -258,82 +309,222 @@ int	num_count(char *str)
 	return count;
 }
 
-int **transform_map(char **map)
+t_int_map **transform_map(char **map)
 {
-    if (!map)
-        return NULL;
-    int rows = 0;
-    while (map[rows])
-        rows++;
-    if (rows == 0)
-        return NULL;
-    int **new_map = (int **)malloc(sizeof(int *) * (rows + 1));
-    if (!new_map)
-    {
-        perror("Error allocating memory for new_map");
-        return NULL;
-    }
-    for (int i = 0; i < rows; i++)
-    {
-        int count = num_count(map[i]);
-        if (count == 0)
-        {
-            new_map[i] = (int *)malloc(sizeof(int));
-            if (!new_map[i])
-            {
-                perror("Error allocating memory for new_map row");
-                for (int k = 0; k < i; k++)
-                    free(new_map[k]);
-                free(new_map);
-                return NULL;
-            }
-            new_map[i][0] = 0;
-            continue;
-        }
-        new_map[i] = (int *)malloc(sizeof(int) * count);
-        if (!new_map[i])
-        {
-            perror("Error allocating memory for new_map row");
-            for (int k = 0; k < i; k++)
-                free(new_map[k]);
-            free(new_map);
-            return NULL;
-        }
-        int j = 0;
-        int start = 0;
-        int in_number = 0;
-        while (map[i][start] != '\0' && j < count)
-        {
-            while (map[i][start] && (map[i][start] != '-' && (map[i][start] < '0' || map[i][start] > '9')))
-                start++;
-            if (map[i][start] == '\0')
-                break;
-            int num_start = start;
-            if (map[i][start] == '-')
-                start++;
-            while (map[i][start] && (map[i][start] >= '0' && map[i][start] <= '9'))
-                start++;
-            int length = start - num_start;
-            char *num_str = (char *)malloc(sizeof(char) * (length + 1));
-            if (!num_str)
-            {
-                perror("Error allocating memory for num_str");
-                for (int m = 0; m <= i; m++)
-                    free(new_map[m]);
-                free(new_map);
-                return NULL;
-            }
-            strncpy(num_str, &map[i][num_start], length);
-            num_str[length] = '\0';
-            new_map[i][j++] = ft_atoi(num_str);
-            free(num_str);
-        }
-    }
-    new_map[rows] = NULL;
-    return new_map;
+	if (!map)
+		return NULL;
+	int rows = 0;
+	while (map[rows])
+		rows++;
+	if (rows == 0)
+		return NULL;
+	t_int_map **new_map = (t_int_map **)malloc(sizeof(t_int_map *) * (rows + 1));
+	if (!new_map)
+	{
+		perror("Error allocating memory for new_map");
+		return NULL;
+	}
+	for (int i = 0; i < rows; i++)
+	{
+		int count = num_count(map[i]);
+		if (count == 0)
+		{
+			new_map[i] = (t_int_map *)malloc(sizeof(t_int_map));
+			if (!new_map[i])
+			{
+				perror("Error allocating memory for new_map row");
+				for (int k = 0; k < i; k++)
+					free(new_map[k]);
+				free(new_map);
+				return NULL;
+			}
+			new_map[i][0].num = 0;
+			new_map[i][0].color = -1;
+			new_map[i][0].trash = 0;
+			continue;
+		}
+		new_map[i] = (t_int_map *)malloc(sizeof(t_int_map) * count);
+		if (!new_map[i])
+		{
+			perror("Error allocating memory for new_map row");
+			for (int k = 0; k < i; k++)
+				free(new_map[k]);
+			free(new_map);
+			return NULL;
+		}
+		int j = 0;
+		int start = 0;
+		while (map[i][start] != '\0' && j < count)
+		{
+			while (map[i][start] && (map[i][start] != '-' && (map[i][start] < '0' || map[i][start] > '9')))
+				start++;
+			if (map[i][start] == '\0')
+				break;
+			int num_start = start;
+			if (map[i][start] == '-')
+				start++;
+			while (map[i][start] && (map[i][start] >= '0' && map[i][start] <= '9'))
+				start++;
+			int length = start - num_start;
+			char *num_str = (char *)malloc(sizeof(char) * (length + 1));
+			if (!num_str)
+			{
+				perror("Error allocating memory for num_str");
+				for (int m = 0; m <= i; m++)
+					free(new_map[m]);
+				free(new_map);
+				return NULL;
+			}
+			new_map[i][j].color = -1;
+			new_map[i][j].trash = 0;
+			if (map[i][start] == ',')
+			{
+				start++;
+				if (map[i][start] == '0' && (map[i][start + 1] == 'x' || map[i][start + 1] == 'X'))
+				{
+					start += 3;
+					int color_start = start;
+					while (map[i][start] && ((map[i][start] >= '0' && map[i][start] <= '9') || 
+											 (map[i][start] >= 'a' && map[i][start] <= 'f') || 
+											 (map[i][start] >= 'A' && map[i][start] <= 'F')))
+					{
+						start++;
+					}
+					int color_length = start - color_start;
+					char *color_str = (char *)malloc(sizeof(char) * (color_length + 1));
+					if (!color_str)
+					{
+						perror("Error allocating memory for color_str");
+						for (int m = 0; m <= i; m++)
+							free(new_map[m]);
+						free(new_map);
+						return NULL;
+					}
+					strncpy(color_str, &map[i][color_start], color_length);
+					color_str[color_length] = '\0';
+					new_map[i][j].color = strtol(color_str, NULL, 16);
+					free(color_str);
+				}
+			}
+			strncpy(num_str, &map[i][num_start], length);
+			num_str[length] = '\0';
+			new_map[i][j].num = ft_atoi(num_str);
+			new_map[i][j].trash = 1;
+			free(num_str);
+			j++;
+		}
+	}
+	new_map[rows] = NULL;
+	return (new_map);
 }
 
-void rotate_3d(int x, int y, int z, double *rx, double *ry, double *rz, double angle_x, double angle_y, double angle_z)
+double normalize_angle(double angle)
+{
+    if (angle < 0)
+    {
+        angle += 360.0;
+    }
+    else if (angle >= 360.0)
+    {
+        angle -= 360.0;
+    }
+    return angle;
+}
+
+#include <math.h>
+
+void calculate_map_bounds(t_map_data *map, int *x_min, int *x_max, int *y_min, int *y_max)
+{
+    *x_min = INT_MAX;
+    *x_max = INT_MIN;
+    *y_min = INT_MAX;
+    *y_max = INT_MIN;
+
+    for (int y = 0; y < map->size_y; y++)
+    {
+        for (int x = 0; x < map->size_x; x++)
+        {
+            if (x < *x_min) *x_min = x;
+            if (x > *x_max) *x_max = x;
+            if (y < *y_min) *y_min = y;
+            if (y > *y_max) *y_max = y;
+        }
+    }
+}
+
+void get_x_bounds(t_map_data *map, int *x_min, int *x_max)
+{
+    *x_min = INT_MAX;
+    *x_max = INT_MIN;
+
+    for (int y = 0; y < map->size_y; y++)
+    {
+        for (int x = 0; x < map->size_x; x++)
+        {
+            if (x < *x_min) *x_min = x;
+            if (x > *x_max) *x_max = x;
+        }
+    }
+}
+
+void get_y_bounds(t_map_data *map, int *y_min, int *y_max)
+{
+    *y_min = INT_MAX;
+    *y_max = INT_MIN;
+
+    for (int y = 0; y < map->size_y; y++)
+    {
+        if (y < *y_min) *y_min = y;
+        if (y > *y_max) *y_max = y;
+    }
+}
+
+void update_rotation(t_transform *transform)
+{
+    transform->rad_x = transform->angle_x * M_PI / 180.0;
+    transform->rad_y = transform->angle_y * M_PI / 180.0;
+    transform->rad_z = transform->angle_z * M_PI / 180.0;
+    transform->cos_x = cos(transform->rad_x);
+    transform->sin_x = sin(transform->rad_x);
+    transform->cos_y = cos(transform->rad_y);
+    transform->sin_y = sin(transform->rad_y);
+    transform->cos_z = cos(transform->rad_z);
+    transform->sin_z = sin(transform->rad_z);
+}
+
+void rotate_3d_optimized(double x, double y, double z, double *rx, double *ry, double *rz, t_transform *transform)
+{
+
+    // Rotazione attorno all'asse X
+
+    double y1 = y * transform->cos_x - z * transform->sin_x;
+
+    double z1 = y * transform->sin_x + z * transform->cos_x;
+
+
+    // Rotazione attorno all'asse Y
+
+    double x2 = x * transform->cos_y + z1 * transform->sin_y;
+
+    double z2 = -x * transform->sin_y + z1 * transform->cos_y;
+
+
+    // Rotazione attorno all'asse Z
+
+    double x3 = x2 * transform->cos_z - y1 * transform->sin_z;
+
+    double y3 = x2 * transform->sin_z + y1 * transform->cos_z;
+
+
+    *rx = x3;
+
+    *ry = y3;
+
+    *rz = z2;
+
+}
+
+void rotate_3d(double x, double y, double z, double *rx, double *ry, double *rz, double angle_x, double angle_y, double angle_z)
 {
     double rad_x = angle_x * M_PI / 180.0;
     double rad_y = angle_y * M_PI / 180.0;
@@ -359,32 +550,27 @@ void rotate_3d(int x, int y, int z, double *rx, double *ry, double *rz, double a
     *rz = z2;
 }
 
-double normalize_angle(double angle)
-{
-    if (angle < 0)
-    {
-        angle += 360.0;
-    }
-    else if (angle >= 360.0)
-    {
-        angle -= 360.0;
-    }
-    return angle;
-}
 
-void isometric_projection(int x, int y, int z, int *x_out, int *y_out, t_object *obj)
-{
 
+void project(int x, int y, int z, int *x_out, int *y_out, t_object *obj)
+{
     double rx, ry, rz;
-    rotate_3d(x, y, z, &rx, &ry, &rz, obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+	update_rotation(&obj->transform);
+	rotate_3d_optimized(x, y, z, &rx, &ry, &rz, &obj->transform);
 
-    double iso_x = (rx - ry);
-    double iso_y = ((rx + ry) / 2) - rz;
-	
-    *x_out = (int)iso_x;
-    *y_out = (int)iso_y;
+    if (obj->projection_mode == 0)
+    {
+        double iso_x = (rx - ry);
+        double iso_y = ((rx + ry) / 2) - rz;
+        *x_out = (int)iso_x;
+        *y_out = (int)iso_y;
+    }
+    else
+    {
+		*x_out = (int)rx;
+		*y_out = (int)ry;
+    }
 }
-
 
 int interpolate_color(int color_start, int color_end, double t) {
 	int r_start = (color_start >> 16) & 0xFF;
@@ -407,7 +593,7 @@ int calculate_color(double z, double z_min, double z_max, t_object *obj) {
 	t = t < 0 ? 0 : (t > 1 ? 1 : t);
 
 	int color_start = obj->color;
-	int color_end = obj->color_end;
+	int color_end = obj->color;
 
 	return interpolate_color(color_start, color_end, t);
 }
@@ -442,7 +628,7 @@ void draw_line(t_data *img, int x1, int y1, int x2, int y2, int color1, int colo
     }
 }
 
-void check_map_null(int **new_map, char **map)
+void check_map_null(t_int_map **new_map, char **map)
 {
     if (!new_map || !map)
     {
@@ -451,7 +637,7 @@ void check_map_null(int **new_map, char **map)
     }
 }
 
-void calculate_min_max_z(int **new_map, char **map, double *z_min, double *z_max)
+void calculate_min_max_z(t_int_map **new_map, char **map, double *z_min, double *z_max)
 {
     int i, j;
 
@@ -463,10 +649,10 @@ void calculate_min_max_z(int **new_map, char **map, double *z_min, double *z_max
 		j = 0;
 		while (j < num_count(map[i]))
 		{
-			if (new_map[i][j] < *z_min)
-			*z_min = new_map[i][j];
-			if (new_map[i][j] > *z_max)
-			*z_max = new_map[i][j];
+			if (new_map[i][j].num < *z_min)
+			*z_min = new_map[i][j].num;
+			if (new_map[i][j].num > *z_max)
+			*z_max = new_map[i][j].num;
 			j++;
 		}
 		i++;
@@ -480,72 +666,87 @@ void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int cente
 
     x = j * square_size - center_x;
     y = i * square_size - center_y;
-    z = obj->map_data.new_map[i][j] * square_size / 5.0;
-    isometric_projection(x, y, z, &iso_x, &iso_y, obj);
+    z = obj->map_data.new_map[i][j].num * square_size / 5.0;
+    project(x, y, z, &iso_x, &iso_y, obj);
     iso_x += obj->transform.x_pos;
     iso_y += obj->transform.y_pos;
-    if (j + 1 < num_count(obj->map_data.map[i]))
+	if (obj->map_data.new_map[i][j].num != -1 && obj->map_data.new_map[i][j].trash)
     {
-        next_z = obj->map_data.new_map[i][j + 1] * square_size / 5.0;
-        isometric_projection((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, obj);
+        next_z = obj->map_data.new_map[i][j + 1].num * square_size / 5.0;
+        project((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, obj);
         iso_next_x += obj->transform.x_pos;
         iso_next_y += obj->transform.y_pos;
 
         next_color = calculate_color(next_z, z_min, z_max, obj);
+		if (obj->map_data.new_map[i][j + 1].color != -1)
+			next_color = obj->map_data.new_map[i][j + 1].color;
         draw_line(img, iso_x, iso_y, iso_next_x, iso_next_y, calculate_color(z, z_min, z_max, obj), next_color);
     }
 }
 
 void draw_vertical_lines(t_data *img, int i, int j, int square_size, int center_x, int center_y, double z_min, double z_max, t_object *obj)
 {
-    int x, y, iso_x, iso_y, iso_below_x, iso_below_y, below_color;
+    int x, y, proj_x, proj_y, proj_below_x, proj_below_y, below_color;
     double z, below_z;
 
     x = j * square_size - center_x;
     y = i * square_size - center_y;
-    z = obj->map_data.new_map[i][j] * square_size / 5.0;
-    isometric_projection(x, y, z, &iso_x, &iso_y, obj);
-    iso_x += obj->transform.x_pos;
-    iso_y += obj->transform.y_pos;
-    if (obj->map_data.new_map[i + 1])
+    z = obj->map_data.new_map[i][j].num * square_size / 5.0;
+    project(x, y, z, &proj_x, &proj_y, obj);
+    proj_x += obj->transform.x_pos;
+    proj_y += obj->transform.y_pos;
+    if (obj->map_data.new_map[i + 1] && obj->map_data.new_map[i + 1][j].trash)
     {
-        below_z = obj->map_data.new_map[i + 1][j] * square_size / 5.0;
-        isometric_projection(x, (i + 1) * square_size - center_y, below_z, &iso_below_x, &iso_below_y, obj);
-        iso_below_x += obj->transform.x_pos;
-        iso_below_y += obj->transform.y_pos;
+        below_z = obj->map_data.new_map[i + 1][j].num * square_size / 5.0;
+        project(x, (i + 1) * square_size - center_y, below_z, &proj_below_x, &proj_below_y, obj);
+        proj_below_x += obj->transform.x_pos;
+        proj_below_y += obj->transform.y_pos;
 
         below_color = calculate_color(below_z, z_min, z_max, obj);
-        draw_line(img, iso_x, iso_y, iso_below_x, iso_below_y, calculate_color(z, z_min, z_max, obj), below_color);
+		if (obj->map_data.new_map[i + 1][j].color != -1)
+			below_color = obj->map_data.new_map[i + 1][j].color;
+        draw_line(img, proj_x, proj_y, proj_below_x, proj_below_y, calculate_color(z, z_min, z_max, obj), below_color);
     }
 }
 
 void draw_map(t_data *img, t_object *obj)
 {
-	int square_size, rows, cols, center_x, center_y;
-	double z_min, z_max;
-	int i, j;
-	
-	check_map_null(obj->map_data.new_map, obj->map_data.map);
-	square_size = obj->size;
-	rows = 0;
-	while (obj->map_data.new_map[rows])
-		rows++;
-	cols = num_count(obj->map_data.map[0]);
-	center_x = (cols * square_size) / 2;
-	center_y = (rows * square_size) / 2;
-	calculate_min_max_z(obj->map_data.new_map, obj->map_data.map, &z_min, &z_max);
-	i = 0;
-	while (obj->map_data.new_map[i])
-	{
-		j = 0;
-		while (j < num_count(obj->map_data.map[i]))
+    int square_size, rows, cols, center_x, center_y;
+    double z_min, z_max;
+    int i, j;
+
+    check_map_null(obj->map_data.new_map, obj->map_data.map);
+    square_size = obj->size;
+    rows = 0;
+    while (obj->map_data.new_map[rows])
+        rows++;
+	cols = 0;
+	while (obj->map_data.new_map[2][cols].trash)
+		cols++;
+	ft_printf("cols: %d\n", cols);
+    center_x = (cols * square_size) / 2;
+    center_y = (rows * square_size) / 2;
+    calculate_min_max_z(obj->map_data.new_map, obj->map_data.map, &z_min, &z_max);
+    i = 0;
+    while (obj->map_data.new_map[i])
+    {
+        j = 0;
+		cols = 0;
+		while (obj->map_data.new_map[i][cols].trash == 1)
+			cols++;
+		while (j < cols - 1)
 		{
 			draw_horizontal_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
+			j++;
+		}
+		j = 0;
+		while (j < cols)
+		{
 			draw_vertical_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
 			j++;
 		}
-		i++;
-	}
+        i++;
+    }
 }
 
 int	calculate_size(char **map, t_object *obj)
@@ -576,12 +777,8 @@ int read_input(int keycode, t_object *obj)
         obj->transform.angle_y -= 5;
     else if (keycode == XK_e)
         obj->transform.angle_y += 5;
-	/* else if (keycode == XK_f)
-	{
-		obj->mouse_data.axis_selected++;
-		if (obj->mouse_data.axis_selected == 3)
-			obj->mouse_data.axis_selected = 0;
-	} */
+	else if (keycode == XK_p)
+        obj->projection_mode = !obj->projection_mode;
 
     draw_all(obj, &obj->img);
     return 0;
@@ -609,31 +806,22 @@ void	move_graph(t_object *obj, int x, int y)
 
 void get_crazy(t_object *obj)
 {
-    static int i = 0, j = 0;
-    int colors[] = {0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x0000FF, 0x4B0082, 0x8B00FF};
-    int color_index = 0;
+	static double time = 0;
+	int i, j;
+	double wave_amplitude = 1.1;
+	double wave_frequency = 0.5;
 
-    if (obj->crazy_mode) {
-        if (obj->map_data.new_map[i]) {
-            obj->map_data.new_map[i][j] += 2;
-        }
-
-        obj->color_end = colors[color_index];
-        obj->color = colors[color_index];
-        color_index = (color_index + 1) % 7;
-        draw_all(obj, &obj->img);
-        
-        j++;
-        if (j >= num_count(obj->map_data.map[i])) {
-            j = 0;
-            i++;
-        }
-        if (i >= 100) {
-            obj->crazy_mode = 0;
-            i = 0;
-        }
-    }
-	usleep(1000);
+	if (obj->crazy_button.is_selected)
+	{
+		for (i = 0; obj->map_data.new_map[i]; i++) {
+			for (j = 0; j < num_count(obj->map_data.map[i]); j++) {
+				double distance = sqrt(i * i + j * j);
+				obj->map_data.new_map[i][j].num = obj->map_data.new_map[i][j].num - (int)(wave_amplitude * sin(distance * wave_frequency + time));
+			}
+		}
+		time += 0.1;
+	}
+	draw_all(obj, &obj->img);
 }
 
 
@@ -658,7 +846,6 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 			obj->y_axis_button.is_selected = 0;
 			obj->z_axis_button.is_selected = 0;
 			obj->xy_axis_button.is_selected = 0;
-			obj->crazy_button.is_selected = 0;
 		}
 		else if (obj->y_axis_button.is_hovered && !obj->y_axis_button.is_selected)
 		{
@@ -667,7 +854,6 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 			obj->x_axis_button.is_selected = 0;
 			obj->z_axis_button.is_selected = 0;
 			obj->xy_axis_button.is_selected = 0;
-			obj->crazy_button.is_selected = 0;
 		}
 		else if (obj->z_axis_button.is_hovered && !obj->z_axis_button.is_selected)
 		{
@@ -676,7 +862,6 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 			obj->y_axis_button.is_selected = 0;
 			obj->x_axis_button.is_selected = 0;
 			obj->xy_axis_button.is_selected = 0;
-			obj->crazy_button.is_selected = 0;
 		}
 		else if (obj->xy_axis_button.is_hovered && !obj->xy_axis_button.is_selected)
 		{
@@ -685,18 +870,22 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 			obj->y_axis_button.is_selected = 0;
 			obj->z_axis_button.is_selected = 0;
 			obj->x_axis_button.is_selected = 0;
-			obj->crazy_button.is_selected = 0;
+		}
+		else if (obj->projection_button.is_hovered && !obj->projection_button.is_selected)
+		{
+			obj->mouse_data.axis_selected = 5;
+			obj->projection_button.is_selected = 1;
+			obj->y_axis_button.is_selected = 0;
+			obj->z_axis_button.is_selected = 0;
+			obj->xy_axis_button.is_selected = 0;
+			obj->x_axis_button.is_selected = 0;
+			obj->projection_mode = !obj->projection_mode;
 		}
 		else if (obj->crazy_button.is_hovered && !obj->crazy_button.is_selected)
 		{
 			obj->mouse_data.axis_selected = 4;
 			obj->crazy_button.is_selected = 1;
 			obj->y_axis_button.is_selected = 0;
-			obj->z_axis_button.is_selected = 0;
-			obj->xy_axis_button.is_selected = 0;
-			obj->x_axis_button.is_selected = 0;
-			get_crazy(obj);
-			ft_printf("Crazy\n");
 		}
 		else if (obj->y_axis_button.is_selected && obj->y_axis_button.is_hovered)
 		{
@@ -720,7 +909,12 @@ int	read_mouse(int button, int x, int y, t_object *obj)
 		{
 			obj->mouse_data.axis_selected = 0;
 			obj->x_axis_button.is_selected = 1;
-			obj->crazy_button.is_selected = 0;
+		}
+		else if (obj->projection_button.is_selected && obj->projection_button.is_hovered)
+		{
+			obj->mouse_data.axis_selected = 0;
+			obj->x_axis_button.is_selected = 1;
+			obj->projection_button.is_selected = 0;
 		}
 		else {
 			obj->mouse_data.mouse_pressed = 1;
@@ -763,11 +957,13 @@ int	all_buttons_hovered(t_object *obj, int x, int y)
 	obj->z_axis_button.is_hovered = is_mouse_over(&obj->z_axis_button, x, y);
 	obj->xy_axis_button.is_hovered = is_mouse_over(&obj->xy_axis_button, x, y);
 	obj->crazy_button.is_hovered = is_mouse_over(&obj->crazy_button, x, y);
+	obj->projection_button.is_hovered = is_mouse_over(&obj->projection_button, x, y);
 	return (obj->x_axis_button.is_hovered
 		&& obj->y_axis_button.is_hovered
 		&& obj->z_axis_button.is_hovered
 		&& obj->xy_axis_button.is_hovered
-		&& obj->crazy_button.is_hovered);
+		&& obj->crazy_button.is_hovered
+		&& obj->projection_button.is_hovered);
 }
 
 
@@ -775,11 +971,12 @@ int handle_mouse_move(int x, int y, t_object *obj)
 {
 	static struct timeval last_time = {0, 0};
     struct timeval current_time;
+	int framerate;
 
     gettimeofday(&current_time, NULL);
     long elapsed = (current_time.tv_sec - last_time.tv_sec) * 1000 + (current_time.tv_usec - last_time.tv_usec) / 1000;
-
-    if (elapsed < 32)
+	framerate = 1000 / obj->size;
+    if (elapsed < framerate)
         return (0);
 
     last_time = current_time;
@@ -846,17 +1043,15 @@ int handle_mouse_move(int x, int y, t_object *obj)
 	{
 		obj->crazy_mode = 1;
 	}
-	return 0;
+	return (0);
 }
 
 int update(t_object *obj)
 {
-    if (obj->crazy_mode) {
+    if (obj->crazy_mode)
         get_crazy(obj);
-    }
     return 0;
 }
-
 
 int main(int ac, char **av)
 {
@@ -876,27 +1071,33 @@ int main(int ac, char **av)
 	obj.mouse_data.initial_mouse_pos[0] = 0;
 	obj.mouse_data.initial_mouse_pos[1] = 0;
 	obj.mouse_data.mouse_speed = 5;
+	obj.projection_mode = 0;
 
 	obj.map_data.map = read_map(av);
 	if (!obj.map_data.map)
 		return 0;
-	obj.size = calculate_size(obj.map_data.map, &obj);
+	
+	obj.size = 1;//calculate_size(obj.map_data.map, &obj);
+	ft_printf("size: %d\n", obj.size);
 	obj.map_data.new_map = transform_map(obj.map_data.map);
 	if (!obj.map_data.new_map)
 		return 0;
+	for (int i = 0; obj.map_data.map[i]; i++) {
+		for (int j = 0; j < num_count(obj.map_data.map[i]); j++) {
+			printf("%d ", obj.map_data.new_map[i][j].trash);
+		}
+		printf("\n");
+	}
 	obj.img.mlx = mlx_init();
 	obj.img.win = mlx_new_window(obj.img.mlx, SCREENX, SCREENY, "The best Fdf ever");
+
 	obj.img.img = mlx_new_image(obj.img.mlx, SCREENX, SCREENY);
 	obj.img.addr = mlx_get_data_addr(obj.img.img, &obj.img.bits_per_pixel, &obj.img.line_length, &obj.img.endian);
-
 	draw_all(&obj, &obj.img);
 	mlx_hook(obj.img.win, KeyPress, KeyPressMask, read_input, &obj);
     mlx_hook(obj.img.win, ButtonPress, ButtonPressMask, read_mouse, &obj);
     mlx_hook(obj.img.win, ButtonRelease, ButtonReleaseMask, release_mouse, &obj);
     mlx_hook(obj.img.win, MotionNotify, PointerMotionMask, handle_mouse_move, &obj);
-
-    // Aggiungi il loop hook per chiamare la funzione update
     mlx_loop_hook(obj.img.mlx, update, &obj);
     mlx_loop(obj.img.mlx);
 }
-

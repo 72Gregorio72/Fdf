@@ -27,6 +27,11 @@
 #define SCREENX 1920
 #define SCREENY 1080
 
+typedef struct s_proj_point {
+    int x;
+    int y;
+}		t_proj_point;
+
 typedef struct s_button {
     int x;
     int y;
@@ -61,6 +66,7 @@ typedef struct s_mouse_data {
 typedef struct s_int_map {
 	int num;
 	int color;
+	int trash;
 }		t_int_map;
 
 typedef struct s_map_data {
@@ -71,14 +77,23 @@ typedef struct s_map_data {
 }			t_map_data;
 
 typedef struct s_transform {
-	int angle_x;
+    int angle_x;
     int angle_y;
-	int angle_z;
-	int	x_pos;
-	int	y_pos;
-	int last_x;
-	int last_y;
-}			t_transform;
+    int angle_z;
+    double rad_x;
+    double rad_y;
+    double rad_z;
+    double cos_x;
+    double sin_x;
+    double cos_y;
+    double sin_y;
+    double cos_z;
+    double sin_z;
+    int x_pos;
+    int y_pos;
+    int last_x;
+    int last_y;
+} t_transform;
 
 typedef struct s_object
 {
@@ -97,6 +112,7 @@ typedef struct s_object
 	int	size;
 	int crazy_mode;
 	int projection_mode;
+	t_proj_point **proj_points;
 }		t_object;
 
 void	draw_all(t_object *obj, t_data *img);
@@ -118,12 +134,10 @@ void my_mlx_pixel_put(t_data *data, int x, int y, int color)
 }
 void	draw_all(t_object *obj, t_data *img)
 {
-	mlx_destroy_image(obj->img.mlx, obj->img.img);
-	obj->img.img = mlx_new_image(obj->img.mlx, SCREENX, SCREENY);
-	obj->img.addr = mlx_get_data_addr(obj->img.img, &obj->img.bits_per_pixel, &obj->img.line_length, &obj->img.endian);
-	draw_map(img, obj);
-	mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
-	draw_buttons(obj);
+    ft_memset(img->addr, 0, SCREENX * SCREENY * (img->bits_per_pixel / 8));
+    draw_map(img, obj);
+    mlx_put_image_to_window(obj->img.mlx, obj->img.win, obj->img.img, 0, 0);
+    draw_buttons(obj);
 }
 
 void	draw_rectangle(t_data *img, int x, int y, int width, int height, int color, int radius)
@@ -237,13 +251,14 @@ char **read_map(char **av)
 		int k = 0;
 		while (line[k] && (ft_isdigit(line[k]) || line[k] == ' ' || line[k] == '-' || line[k] == '\n' || line[k] == ','))
 		{
+			ft_printf("line[%d]: %c\n", k, line[k]);
 			if (line[k] == ',' && (line[k + 1] == '0' && line[k + 2] == 'x'))
 			{
 				k += 3;
 				while(line[k] && ft_isdigit(line[k]) || (line[k] >= 'a' && line[k] <= 'f') || (line[k] >= 'A' && line[k] <= 'F'))
 					k++;
-				if (line[k] != ' ' && line[k] != '\0')
-					return (ft_printf("Error: Invalid color in map: %c\n", line[k]), NULL);
+				if (line[k] != ' ' && line[k] != '\0' && line[k] != '\n')
+					return (ft_printf("Error: Invalid color in map: %d\n", line[k]), NULL);
 			}
 			else if (!ft_isdigit(line[k]) && line[k] != ' ' && line[k] != '-' && line[k] != '\n')
 				return (ft_printf("Error: Invalid color in map: %c\n", line[k]), NULL);
@@ -325,6 +340,7 @@ t_int_map **transform_map(char **map)
 			}
 			new_map[i][0].num = 0;
 			new_map[i][0].color = -1;
+			new_map[i][0].trash = 0;
 			continue;
 		}
 		new_map[i] = (t_int_map *)malloc(sizeof(t_int_map) * count);
@@ -360,6 +376,7 @@ t_int_map **transform_map(char **map)
 				return NULL;
 			}
 			new_map[i][j].color = -1;
+			new_map[i][j].trash = 0;
 			if (map[i][start] == ',')
 			{
 				start++;
@@ -392,6 +409,7 @@ t_int_map **transform_map(char **map)
 			strncpy(num_str, &map[i][num_start], length);
 			num_str[length] = '\0';
 			new_map[i][j].num = ft_atoi(num_str);
+			new_map[i][j].trash = 1;
 			free(num_str);
 			j++;
 		}
@@ -461,7 +479,50 @@ void get_y_bounds(t_map_data *map, int *y_min, int *y_max)
     }
 }
 
-#include <math.h>
+void update_rotation(t_transform *transform)
+{
+    transform->rad_x = transform->angle_x * M_PI / 180.0;
+    transform->rad_y = transform->angle_y * M_PI / 180.0;
+    transform->rad_z = transform->angle_z * M_PI / 180.0;
+    transform->cos_x = cos(transform->rad_x);
+    transform->sin_x = sin(transform->rad_x);
+    transform->cos_y = cos(transform->rad_y);
+    transform->sin_y = sin(transform->rad_y);
+    transform->cos_z = cos(transform->rad_z);
+    transform->sin_z = sin(transform->rad_z);
+}
+
+void rotate_3d_optimized(double x, double y, double z, double *rx, double *ry, double *rz, t_transform *transform)
+{
+
+    // Rotazione attorno all'asse X
+
+    double y1 = y * transform->cos_x - z * transform->sin_x;
+
+    double z1 = y * transform->sin_x + z * transform->cos_x;
+
+
+    // Rotazione attorno all'asse Y
+
+    double x2 = x * transform->cos_y + z1 * transform->sin_y;
+
+    double z2 = -x * transform->sin_y + z1 * transform->cos_y;
+
+
+    // Rotazione attorno all'asse Z
+
+    double x3 = x2 * transform->cos_z - y1 * transform->sin_z;
+
+    double y3 = x2 * transform->sin_z + y1 * transform->cos_z;
+
+
+    *rx = x3;
+
+    *ry = y3;
+
+    *rz = z2;
+
+}
 
 void rotate_3d(double x, double y, double z, double *rx, double *ry, double *rz, double angle_x, double angle_y, double angle_z)
 {
@@ -489,10 +550,13 @@ void rotate_3d(double x, double y, double z, double *rx, double *ry, double *rz,
     *rz = z2;
 }
 
+
+
 void project(int x, int y, int z, int *x_out, int *y_out, t_object *obj)
 {
     double rx, ry, rz;
-    rotate_3d(x, y, z, &rx, &ry, &rz, obj->transform.angle_x, obj->transform.angle_y, obj->transform.angle_z);
+
+    rotate_3d_optimized(x, y, z, &rx, &ry, &rz, &obj->transform);
 
     if (obj->projection_mode == 0)
     {
@@ -503,8 +567,8 @@ void project(int x, int y, int z, int *x_out, int *y_out, t_object *obj)
     }
     else
     {
-		*x_out = (int)rx;
-		*y_out = (int)ry;
+        *x_out = (int)rx;
+        *y_out = (int)ry;
     }
 }
 
@@ -529,7 +593,7 @@ int calculate_color(double z, double z_min, double z_max, t_object *obj) {
 	t = t < 0 ? 0 : (t > 1 ? 1 : t);
 
 	int color_start = obj->color;
-	int color_end = obj->color_end;
+	int color_end = obj->color;
 
 	return interpolate_color(color_start, color_end, t);
 }
@@ -541,14 +605,16 @@ void draw_line(t_data *img, int x1, int y1, int x2, int y2, int color1, int colo
     int sy = (y1 < y2) ? 1 : -1;
     int err = dx - dy;
 
-    double distance = sqrt(dx * dx + dy * dy);
-    double progress = 0;
+    int distance = sqrt(dx * dx + dy * dy);  // Potrebbe essere ottimizzato ulteriormente
+    if (distance == 0) distance = 1; // Evitare divisioni per zero
 
     while (1) {
         if (x1 >= 0 && x1 < SCREENX && y1 >= 0 && y1 < SCREENY) {
-            int color = interpolate_color(color1, color2, progress / distance);
-			my_mlx_pixel_put(img, x1, y1, color);
-		}
+            // Interpolazione lineare del colore usando interi
+            double t = (double)(abs(x1 - x2) + abs(y1 - y2)) / distance;
+            int color = interpolate_color(color1, color2, t);
+            my_mlx_pixel_put(img, x1, y1, color);
+        }
         if (x1 == x2 && y1 == y2)
             break;
         int e2 = err * 2;
@@ -560,7 +626,6 @@ void draw_line(t_data *img, int x1, int y1, int x2, int y2, int color1, int colo
             err += dx;
             y1 += sy;
         }
-        progress++;
     }
 }
 
@@ -606,7 +671,7 @@ void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int cente
     project(x, y, z, &iso_x, &iso_y, obj);
     iso_x += obj->transform.x_pos;
     iso_y += obj->transform.y_pos;
-    if (j + 1 < num_count(obj->map_data.map[i]))
+	if (obj->map_data.new_map[i][j].num != -1 && obj->map_data.new_map[i][j].trash)
     {
         next_z = obj->map_data.new_map[i][j + 1].num * square_size / 5.0;
         project((j + 1) * square_size - center_x, y, next_z, &iso_next_x, &iso_next_y, obj);
@@ -614,6 +679,8 @@ void draw_horizontal_lines(t_data *img, int i, int j, int square_size, int cente
         iso_next_y += obj->transform.y_pos;
 
         next_color = calculate_color(next_z, z_min, z_max, obj);
+		if (obj->map_data.new_map[i][j + 1].color != -1)
+			next_color = obj->map_data.new_map[i][j + 1].color;
         draw_line(img, iso_x, iso_y, iso_next_x, iso_next_y, calculate_color(z, z_min, z_max, obj), next_color);
     }
 }
@@ -629,7 +696,7 @@ void draw_vertical_lines(t_data *img, int i, int j, int square_size, int center_
     project(x, y, z, &proj_x, &proj_y, obj);
     proj_x += obj->transform.x_pos;
     proj_y += obj->transform.y_pos;
-    if (obj->map_data.new_map[i + 1])
+    if (obj->map_data.new_map[i + 1] && obj->map_data.new_map[i + 1][j].trash)
     {
         below_z = obj->map_data.new_map[i + 1][j].num * square_size / 5.0;
         project(x, (i + 1) * square_size - center_y, below_z, &proj_below_x, &proj_below_y, obj);
@@ -637,6 +704,8 @@ void draw_vertical_lines(t_data *img, int i, int j, int square_size, int center_
         proj_below_y += obj->transform.y_pos;
 
         below_color = calculate_color(below_z, z_min, z_max, obj);
+		if (obj->map_data.new_map[i + 1][j].color != -1)
+			below_color = obj->map_data.new_map[i + 1][j].color;
         draw_line(img, proj_x, proj_y, proj_below_x, proj_below_y, calculate_color(z, z_min, z_max, obj), below_color);
     }
 }
@@ -652,17 +721,32 @@ void draw_map(t_data *img, t_object *obj)
     rows = 0;
     while (obj->map_data.new_map[rows])
         rows++;
-    cols = num_count(obj->map_data.map[0]);
+    cols = 0;
+    while (obj->map_data.new_map[2][cols].trash)
+        cols++;
+    ft_printf("cols: %d\n", cols);
     center_x = (cols * square_size) / 2;
     center_y = (rows * square_size) / 2;
+
+    // Chiamata unica a update_rotation
+    update_rotation(&obj->transform);
+
     calculate_min_max_z(obj->map_data.new_map, obj->map_data.map, &z_min, &z_max);
     i = 0;
     while (obj->map_data.new_map[i])
     {
         j = 0;
-        while (j < num_count(obj->map_data.map[i]))
+        cols = 0;
+        while (obj->map_data.new_map[i][cols].trash == 1)
+            cols++;
+        while (j < cols - 1)
         {
             draw_horizontal_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
+            j++;
+        }
+        j = 0;
+        while (j < cols)
+        {
             draw_vertical_lines(img, i, j, square_size, center_x, center_y, z_min, z_max, obj);
             j++;
         }
@@ -892,11 +976,12 @@ int handle_mouse_move(int x, int y, t_object *obj)
 {
 	static struct timeval last_time = {0, 0};
     struct timeval current_time;
+	int framerate;
 
     gettimeofday(&current_time, NULL);
     long elapsed = (current_time.tv_sec - last_time.tv_sec) * 1000 + (current_time.tv_usec - last_time.tv_usec) / 1000;
-
-    if (elapsed < 32)
+	framerate = 1000 / obj->size;
+    if (elapsed < framerate)
         return (0);
 
     last_time = current_time;
@@ -963,14 +1048,13 @@ int handle_mouse_move(int x, int y, t_object *obj)
 	{
 		obj->crazy_mode = 1;
 	}
-	return 0;
+	return (0);
 }
 
 int update(t_object *obj)
 {
-    if (obj->crazy_mode) {
+    if (obj->crazy_mode)
         get_crazy(obj);
-    }
     return 0;
 }
 
@@ -997,18 +1081,23 @@ int main(int ac, char **av)
 	obj.map_data.map = read_map(av);
 	if (!obj.map_data.map)
 		return 0;
-	for (int i = 0; obj.map_data.map[i]; i++) {
-		printf("%s\n", obj.map_data.map[i]);
-	}
+	
 	obj.size = calculate_size(obj.map_data.map, &obj);
+	ft_printf("size: %d\n", obj.size);
 	obj.map_data.new_map = transform_map(obj.map_data.map);
 	if (!obj.map_data.new_map)
 		return 0;
+	/* for (int i = 0; obj.map_data.map[i]; i++) {
+		for (int j = 0; j < num_count(obj.map_data.map[i]); j++) {
+			printf("%d ", obj.map_data.new_map[i][j].trash);
+		}
+		printf("\n");
+	} */
 	obj.img.mlx = mlx_init();
 	obj.img.win = mlx_new_window(obj.img.mlx, SCREENX, SCREENY, "The best Fdf ever");
+
 	obj.img.img = mlx_new_image(obj.img.mlx, SCREENX, SCREENY);
 	obj.img.addr = mlx_get_data_addr(obj.img.img, &obj.img.bits_per_pixel, &obj.img.line_length, &obj.img.endian);
-
 	draw_all(&obj, &obj.img);
 	mlx_hook(obj.img.win, KeyPress, KeyPressMask, read_input, &obj);
     mlx_hook(obj.img.win, ButtonPress, ButtonPressMask, read_mouse, &obj);
