@@ -28,6 +28,11 @@ typedef struct s_point {
 	int exists;
 }               t_point;
 
+typedef enum e_projection {
+    PROJECTION_ISOMETRIC,
+    PROJECTION_SPHERICAL
+}               t_projection;
+
 typedef struct s_keys {
 	int key_w;
 	int key_s;
@@ -63,18 +68,19 @@ typedef struct s_transform {
 }               t_transform;
 
 typedef struct s_data {
-	void *mlx;
-	void *win;
-	void *img;
-	char *addr;
-	int bits_per_pixel;
-	int line_length;
-	int endian;
-	t_map map;
-	t_transform transform;
-	t_keys keys;
-	t_mouse mouse;
-	double scale;
+    void *mlx;
+    void *win;
+    void *img;
+    char *addr;
+    int bits_per_pixel;
+    int line_length;
+    int endian;
+    t_map map;
+    t_transform transform;
+    t_keys keys;
+    t_mouse mouse;
+    double scale;
+    t_projection projection;
 }               t_data;
 
 char *ft_strchr(const char *s, int c);
@@ -140,6 +146,7 @@ t_map read_map(char *filename)
 		map.height++;
 		current_row_width = 0;
 		char *tmp = line;
+		
 		while (*tmp)
 		{
 			while (*tmp && (*tmp == ' ' || *tmp == '\n'))
@@ -156,9 +163,9 @@ t_map read_map(char *filename)
 					*comma = ',';
 					tmp = comma + 1;
 				}
-				else if (!ft_isdigit(*tmp))
+				else if (!ft_isdigit(*tmp) && *tmp != '-')
 				{
-					fprintf(stderr, "Error: Invalid map format. Only numbers or numbers with hexadecimal colors are allowed.\nFound: "RED"%c\n", *comma);
+					fprintf(stderr, "Error: Invalid map format. Only numbers or numbers with hexadecimal colors are allowed.\nFound: "RED"%c\n", *tmp);
 					exit(EXIT_FAILURE);
 				}
 				while (*tmp && *tmp != ' ')
@@ -308,29 +315,98 @@ void init_map_points(t_map *map)
 	}
 }
 
+t_point project_point_spherical(t_data *data, t_point p) {
+    t_point projected;
+    double r = 10;//fmin(SCREEN_WIDTH, SCREEN_HEIGHT) / 2.0;
+    double x_mercator = (p.x - SCREEN_WIDTH / 2.0) / r;
+    double y_mercator = (p.y - SCREEN_HEIGHT / 2.0) / r;
+    double longitude = x_mercator * PI;
+    double latitude = 2 * atan(exp(y_mercator * PI)) - PI / 2;
+    projected.x = r * cos(latitude) * cos(longitude);
+    projected.y = r * cos(latitude) * sin(longitude);
+    projected.z = r * sin(latitude);
+
+    projected.color = p.color;
+    return projected;
+} // Assicurati di includere i tuoi file di intestazione
+
+#define RADIUS 100000000
+
+void rotate_3d(double *x, double *y, double *z, double angle_x, double angle_y, double angle_z)
+{
+    double rad_x = angle_x * PI / 180.0;
+    double rad_y = angle_y * PI / 180.0;
+    double rad_z = angle_z * PI / 180.0;
+    double y_temp = *y * cos(rad_x) - *z * sin(rad_x);
+    double z_temp = *y * sin(rad_x) + *z * cos(rad_x);
+    *y = y_temp;
+    *z = z_temp;
+    double x_temp = *x * cos(rad_y) + *z * sin(rad_y);
+    z_temp = -*x * sin(rad_y) + *z * cos(rad_y);
+    *x = x_temp;
+    *z = z_temp;
+    x_temp = *x * cos(rad_z) - *y * sin(rad_z);
+    y_temp = *x * sin(rad_z) + *y * cos(rad_z);
+    *x = x_temp;
+    *y = y_temp;
+}
+
 t_point project_point(t_data *data, t_point p)
 {
-	t_point projected;
-	double x_rot, y_rot, z_rot;
-	double rad_x = data->transform.angle_x * PI / 180.0;
-	y_rot = p.y * cos(rad_x) - p.z * sin(rad_x);
-	z_rot = p.y * sin(rad_x) + p.z * cos(rad_x);
-	double rad_y = data->transform.angle_y * PI / 180.0;
-	double x_rot_temp = p.x * cos(rad_y) + z_rot * sin(rad_y);
-	double z_rot_temp = -p.x * sin(rad_y) + z_rot * cos(rad_y);
-	x_rot = x_rot_temp;
-	z_rot = z_rot_temp;
-	double rad_z = data->transform.angle_z * PI / 180.0;
-	double x_final = x_rot * cos(rad_z) - y_rot * sin(rad_z);
-	double y_final = x_rot * sin(rad_z) + y_rot * cos(rad_z);
-	double scale = data->scale * fmin((double)SCREEN_WIDTH / (data->map.width * 2.0),
-									  (double)SCREEN_HEIGHT / (data->map.height * 2.0));
-	projected.x = (int)(x_final * scale) + SCREEN_WIDTH / 2 + (int)data->transform.translate_x;
-	projected.y = (int)(y_final * scale) + SCREEN_HEIGHT / 2 + (int)data->transform.translate_y;
-	projected.z = (int)(z_rot * scale / 2.0);
-	projected.color = p.color;
-	return projected;
+    if (data->projection == PROJECTION_ISOMETRIC)
+    {
+		t_point projected;
+		double x_rot, y_rot, z_rot;
+		double height_scale = 0.2;
+		double rad_x = data->transform.angle_x * PI / 180.0;
+		y_rot = p.y * cos(rad_x) - (p.z * height_scale) * sin(rad_x);
+		z_rot = p.y * sin(rad_x) + (p.z * height_scale) * cos(rad_x);
+		double rad_y = data->transform.angle_y * PI / 180.0;
+		double x_rot_temp = p.x * cos(rad_y) + z_rot * sin(rad_y);
+		double z_rot_temp = -p.x * sin(rad_y) + z_rot * cos(rad_y);
+		x_rot = x_rot_temp;
+		z_rot = z_rot_temp;
+		double rad_z = data->transform.angle_z * PI / 180.0;
+		double x_final = x_rot * cos(rad_z) - y_rot * sin(rad_z);
+		double y_final = x_rot * sin(rad_z) + y_rot * cos(rad_z);
+		double scale = data->scale * fmin((double)SCREEN_WIDTH / (data->map.width * 2.0),
+										  (double)SCREEN_HEIGHT / (data->map.height));
+		projected.x = (int)(x_final * scale) + SCREEN_WIDTH / 2 + (int)data->transform.translate_x;
+		projected.y = (int)(y_final * scale) + SCREEN_HEIGHT / 2 + (int)data->transform.translate_y;
+		projected.color = p.color;
+	
+		return projected;
+	}	
+    else if (data->projection == PROJECTION_SPHERICAL)
+    {
+        t_point projected;
+        double sphere_radius = fmin(SCREEN_WIDTH, SCREEN_HEIGHT) / 2.5;
+        double u = (double)p.x / (data->map.width - 1);
+        double v = (double)p.y / (data->map.height - 1);
+        double lon = (u * 2.0 * PI) - PI;
+        double lat = ((1.0 - v) * PI) - (PI);
+        double x_sphere = cos(lat) * cos(lon);
+        double y_sphere = sin(lat);
+        double z_sphere = cos(lat) * sin(lon);
+        double height_factor = 10.0;
+        double scale = ((1.0 + (p.z * height_factor / sphere_radius)) / (data->map.height * 0.1)) * data->scale;
+        x_sphere *= scale;
+        y_sphere *= scale;
+        z_sphere *= scale;
+        rotate_3d(&x_sphere, &y_sphere, &z_sphere,
+                  data->transform.angle_x, 
+                  data->transform.angle_y, 
+                  data->transform.angle_z);
+        projected.x = x_sphere * sphere_radius + SCREEN_WIDTH / 2 + data->transform.translate_x;
+        projected.y = y_sphere * sphere_radius + SCREEN_HEIGHT / 2 + data->transform.translate_y;
+        projected.z = z_sphere * sphere_radius;
+        projected.color = p.color;
+        return (projected);
+    }
+    t_point default_proj = {0, 0, 0, 0xFFFFFF, 1};
+    return default_proj;
 }
+
 
 void my_mlx_pixel_put(t_data *data, int x, int y, int color)
 {
@@ -342,31 +418,56 @@ void my_mlx_pixel_put(t_data *data, int x, int y, int color)
 	*(unsigned int*)dst = color;
 }
 
+unsigned int interpolate_color(unsigned int color1, unsigned int color2, double t)
+{
+    if (t > 1.0)
+        t = 1.0;
+    if (t < 0.0)
+        t = 0.0;
+    unsigned char r1 = (color1 >> 16) & 0xFF;
+    unsigned char g1 = (color1 >> 8) & 0xFF;
+    unsigned char b1 = color1 & 0xFF;
+    unsigned char r2 = (color2 >> 16) & 0xFF;
+    unsigned char g2 = (color2 >> 8) & 0xFF;
+    unsigned char b2 = color2 & 0xFF;
+    unsigned char r = r1 + (unsigned char)((r2 - r1) * t);
+    unsigned char g = g1 + (unsigned char)((g2 - g1) * t);
+    unsigned char b = b1 + (unsigned char)((b2 - b1) * t);
+    return (r << 16) | (g << 8) | b;
+}
+
 void draw_line(t_data *data, t_point p1, t_point p2)
 {
-	int dx = abs(p2.x - p1.x);
-	int dy = abs(p2.y - p1.y);
-	int sx = (p1.x < p2.x) ? 1 : -1;
-	int sy = (p1.y < p2.y) ? 1 : -1;
-	int err = dx - dy;
+    int dx = abs(p2.x - p1.x);
+    int dy = abs(p2.y - p1.y);
+    int sx = (p1.x < p2.x) ? 1 : -1;
+    int sy = (p1.y < p2.y) ? 1 : -1;
+    int err = dx - dy;
+    double length = sqrt((p2.x - p1.x) * (p2.x - p1.x) + 
+                         (p2.y - p1.y) * (p2.y - p1.y));
+    double t = 0.0;
+    int steps = 0;
+    int max_steps = (int)length;
 
-	while (1)
-	{
-		my_mlx_pixel_put(data, p1.x, p1.y, p1.color);
-		if (p1.x == p2.x && p1.y == p2.y)
-			break;
-		int e2 = 2 * err;
-		if (e2 > -dy)
-		{
-			err -= dy;
-			p1.x += sx;
-		}
-		if (e2 < dx)
-		{
-			err += dx;
-			p1.y += sy;
-		}
-	}
+    while (1)
+    {
+        double current_t = (length != 0) ? (double)steps / length : 0;
+        my_mlx_pixel_put(data, p1.x, p1.y, interpolate_color(p1.color, p2.color, current_t));
+        if (p1.x == p2.x && p1.y == p2.y)
+            break;
+        int e2 = 2 * err;
+        if (e2 > -dy)
+        {
+            err -= dy;
+            p1.x += sx;
+        }
+        if (e2 < dx)
+        {
+            err += dx;
+            p1.y += sy;
+        }
+        steps++;
+    }
 }
 
 void draw_map(t_data *data)
@@ -406,8 +507,9 @@ void draw_ui(t_data *data)
 	mlx_string_put(data->mlx, data->win, start_x, start_y + line_height, color, "W/S: Ruota sull'asse X");
 	mlx_string_put(data->mlx, data->win, start_x, start_y + 2 * line_height, color, "A/D: Ruota sull'asse Y");
 	mlx_string_put(data->mlx, data->win, start_x, start_y + 3 * line_height, color, "Q/E: Ruota sull'asse Z");
-	mlx_string_put(data->mlx, data->win, start_x, start_y + 5 * line_height, color, "Freccette: Trasla");
-	mlx_string_put(data->mlx, data->win, start_x, start_y + 4 * line_height, color, "Esc: Esci");
+	mlx_string_put(data->mlx, data->win, start_x, start_y + 4 * line_height, color, "Freccette: Trasla");
+	mlx_string_put(data->mlx, data->win, start_x, start_y + 5 * line_height, color, "F: Cambia proiezione(Sferica-Isometrica)");
+	mlx_string_put(data->mlx, data->win, start_x, start_y + 6 * line_height, color, "Esc: Esci");
 }
 
 void update_image(t_data *data)
@@ -421,35 +523,40 @@ void update_image(t_data *data)
 int update(t_data *data)
 {
 	int updated = 0;
+	float increment = 0.2 / (data->scale * 0.2);
 
+	if (data->map.width > 300 && data->map.height > 300)
+	{
+		increment = 5;
+	}
 	if (data->keys.key_w)
 	{
-		data->transform.angle_x += 0.2 / data->scale;
+		data->transform.angle_x += increment;
 		updated = 1;
 	}
 	if (data->keys.key_s)
 	{
-		data->transform.angle_x -= 0.2 / data->scale;
+		data->transform.angle_x -= increment;
 		updated = 1;
 	}
 	if (data->keys.key_a)
 	{
-		data->transform.angle_y -= 0.2 / data->scale;
+		data->transform.angle_y -= increment;
 		updated = 1;
 	}
 	if (data->keys.key_d)
 	{
-		data->transform.angle_y += 0.2 / data->scale;
+		data->transform.angle_y += increment;
 		updated = 1;
 	}
 	if (data->keys.key_q)
 	{
-		data->transform.angle_z -= 0.2 / data->scale;
+		data->transform.angle_z -= increment;
 		updated = 1;
 	}
 	if (data->keys.key_e)
 	{
-		data->transform.angle_z += 0.2 / data->scale;
+		data->transform.angle_z += increment;
 		updated = 1;
 	}
 	if (data->keys.key_up)
@@ -494,6 +601,14 @@ int handle_keypress_event(int key, t_data *data)
 		data->keys.key_q = 1;
 	else if (key == 101)
 		data->keys.key_e = 1;
+	else if (key == 102)
+	{
+		if (data->projection == PROJECTION_ISOMETRIC)
+			data->projection = PROJECTION_SPHERICAL;
+		else
+			data->projection = PROJECTION_ISOMETRIC;
+		update_image(data);
+	}
 	else if (key == 65362)
 		data->keys.key_up = 1;
 	else if (key == 65364)
@@ -603,7 +718,7 @@ int main(int argc, char **argv)
 	t_data  data;
 	if (argc != 2)
 	{
-		printf("Usage: %s <map_file>\n", argv[0]);
+		ft_printf("Usage: %s <map_file>\n", argv[0]);
 		return (0);
 	}
 	data.map = read_map(argv[1]);
@@ -630,6 +745,7 @@ int main(int argc, char **argv)
 	ft_memset(&data.keys, 0, sizeof(t_keys));
 	ft_memset(&data.mouse, 0, sizeof(t_mouse));
 	data.scale = 1.0;
+    data.projection = PROJECTION_ISOMETRIC;
 	update_image(&data);
 	mlx_hook(data.win, KeyPress, KeyPressMask, handle_keypress_event, &data);
 	mlx_hook(data.win, KeyRelease, KeyReleaseMask, handle_keyrelease_event, &data);
